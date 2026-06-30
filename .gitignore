@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+test_outputs/
+test_outputs*
+*.csv
+*.png
+.system_generated/
+.agents/
+*.bat
