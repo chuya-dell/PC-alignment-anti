@@ -21,8 +21,8 @@ def process_tile(tile_img, x_offset, y_offset, tile_bounds, min_area=3, max_area
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (top_hat_size, top_hat_size))
     tophat = cv2.morphologyEx(tile_img, cv2.MORPH_TOPHAT, kernel)
     
-    # 2. Noise reduction
-    blurred = cv2.GaussianBlur(tophat, (3, 3), 0)
+    # 2. Noise reduction (increased to 5x5 to better filter high-frequency noise)
+    blurred = cv2.GaussianBlur(tophat, (5, 5), 0)
     
     if method == "blob":
         # 3. Binarization (Otsu's threshold is excellent here since background is zeroed out)
@@ -97,16 +97,15 @@ def process_tile(tile_img, x_offset, y_offset, tile_bounds, min_area=3, max_area
         kernel_dil = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * min_dist + 1, 2 * min_dist + 1))
         dilated = cv2.dilate(blurred, kernel_dil)
         
-        # Determine threshold
-        if threshold is None:
-            # Auto-threshold using Otsu's binarization threshold on the filtered image
-            thresh_val, _ = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            thresh_val = max(thresh_val, 5.0)  # Ensure a minimum threshold to filter noise
-        else:
-            thresh_val = threshold
-            
-        # Detect peaks (pixel must be equal to local dilated maximum and >= threshold)
-        peaks_mask = (blurred == dilated) & (blurred >= thresh_val)
+        # Determine threshold using local background subtraction (highly robust to local illumination variations)
+        # Compute local background using a box filter (size 21x21 is larger than a few pillars)
+        bg_local = cv2.boxFilter(blurred, -1, (21, 21))
+        local_contrast = blurred.astype(np.float32) - bg_local.astype(np.float32)
+        
+        # Default contrast threshold is 1.5 (optimized for 5x5 Gaussian filtered local contrast)
+        thresh_val = 1.5 if threshold is None else threshold
+        
+        peaks_mask = (blurred == dilated) & (local_contrast >= thresh_val)
         
         # Resolve flat-top duplicate peaks using connected components
         num_peaks, labels, stats, centroids = cv2.connectedComponentsWithStats(peaks_mask.astype(np.uint8))

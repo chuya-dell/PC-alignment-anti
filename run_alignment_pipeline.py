@@ -6,7 +6,7 @@ import numpy as np
 from registration import align_and_match_dataframes
 
 def main():
-    raw_folder = "G:/マイドライブ/1.実験データ_gdrive/5.生データ D/260630 dna sam/位置合わせ"
+    raw_folder = "G:/マイドライブ/1.実験データ_gdrive/5.生データ D/260630 sam dna/位置合わせ"
     outputs_dir = "C:/Users/chuya/.gemini/antigravity/scratch/plasmon_analyzer/test_outputs"
     
     ref_img_path = os.path.join(raw_folder, "1-0.tif")
