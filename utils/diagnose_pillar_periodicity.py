@@ -90,7 +90,7 @@ def radial_profile(power: np.ndarray) -> np.ndarray:
 
 
 def analyze_fft(region: np.ndarray, nm_per_px, design_pitch_nm,
-                min_period_px=3.0, max_period_px=60.0, snr_thresh=5.0):
+                min_period_px=2.2, max_period_px=60.0, snr_thresh=10.0):
     """
     代表領域の 2D FFT を計算し、動径パワープロファイルから周期ピークを探索する。
     戻り値 dict: パワースペクトル(log), 動径プロファイル, 検出周期/周波数, SNR, 判定など。
@@ -170,9 +170,26 @@ def analyze_fft(region: np.ndarray, nm_per_px, design_pitch_nm,
         reason = (f"周期信号は検出(周期{peak_period:.2f}px, SNR{g_snr:.1f})だが、"
                   f"設計換算の想定周期{expected_period:.2f}pxと不一致(倍率/pixel pitch要確認)")
 
+    # (c) 上位ピーク(周期・SNR)を抽出: 高調波/分数調波・別周期の把握用
+    top_peaks = []
+    order = np.argsort(np.where(valid, prominence, -np.inf))[::-1]
+    for k in order:
+        if not valid[k]:
+            break
+        if not (prof[k] >= prof[max(0, k - 1)] and prof[k] >= prof[min(n - 1, k + 1)]):
+            continue
+        if any(abs(k - pk) <= 3 for pk, _, _ in top_peaks):
+            continue
+        s, _ = _snr_at(int(k))
+        top_peaks.append((int(k), 1.0 / freqs[k], s))
+        if len(top_peaks) >= 5:
+            break
+    top_peaks = [{"period_px": p, "snr": s} for _, p, s in top_peaks]
+
     return {**base_ret, "has_peak": has_peak, "reason": reason,
             "peak_period_px": peak_period, "peak_freq": peak_freq, "snr": g_snr,
             "matches_design": matches_design, "expected_snr": expected_snr,
+            "top_peaks": top_peaks, "nyquist_period_px": 2.0,
             "floor_scatter": float(scatter), "peak_prominence": float(prominence[gpeak_k])}
 
 
@@ -431,6 +448,79 @@ def filter_comparison(spacing, sigma, match_thr):
     return {"shifts": shifts, "ncc_no": ncc_no, "rate_no": rate_no, "ncc_lap": ncc_lap}
 
 
+def analyze_discrepancy(fft, blur, nm_per_px, design_pitch_nm, visual_range):
+    """
+    「nm/px換算の設計周期」「FFT実測周期」「目視推定周期」の3者を突き合わせ、
+    食い違いの原因仮説を定量的に自動判定する。
+
+    fft_period が:
+      - 設計換算(design/nm_per_px)に一致 → nm/px は正しく、目視が別構造/過大評価
+      - 目視に一致 → nm/px が factor だけずれている(または撮像倍率誤り)
+      - どちらとも違う → 別の周期構造(高調波・分数調波・モアレ)
+    さらに、設計周期が Nyquist(2px)近傍で undersampling なら、
+    基本波がボケMTFで消えて別周期だけが残る可能性を指摘する。
+    """
+    P_fft = fft["peak_period_px"]
+    P_design = (design_pitch_nm / nm_per_px) if nm_per_px else np.nan
+    tol = 0.20  # 一致とみなす相対許容(nm/px の ±15-20% 近似を反映)
+
+    def close(a, b):
+        return np.isfinite(a) and np.isfinite(b) and abs(a - b) <= tol * b
+
+    vlo = vhi = np.nan
+    if visual_range:
+        vlo, vhi = float(min(visual_range)), float(max(visual_range))
+    in_visual = np.isfinite(P_fft) and visual_range and (vlo * (1 - tol) <= P_fft <= vhi * (1 + tol))
+
+    hyps = []
+    verdict = ""
+    if np.isfinite(P_design) and close(P_fft, P_design):
+        verdict = ("FFT実測周期は nm/px換算の設計周期に一致 → **nm/px=60 は妥当**、"
+                   "目視5-8pxは真ピッチではない(ボケで融合したブロブの塊/モアレ/2次周期、"
+                   "または低コントラスト微細パターンの目視過大評価)可能性が高い。")
+        hyps.append(f"目視の逆算nm/px = {design_pitch_nm/vhi:.0f}〜{design_pitch_nm/vlo:.0f} "
+                    f"(真ピッチ{P_fft:.2f}pxなら nm/px≈{design_pitch_nm/P_fft:.0f})" if visual_range else "")
+    elif in_visual:
+        implied = design_pitch_nm / P_fft if P_fft else np.nan
+        verdict = (f"FFT実測周期は目視({vlo:.0f}-{vhi:.0f}px)に一致 → **目視が正しく nm/px がずれている**。"
+                   f"実測周期から逆算した nm/px ≈ {implied:.0f} nm/px "
+                   f"(申告60の約{60/implied:.1f}倍ずれ。撮像倍率/pixel pitch の再確認が必要)。")
+    elif np.isfinite(P_fft):
+        # 高調波/分数調波関係のチェック
+        rel = ""
+        if np.isfinite(P_design):
+            r = P_fft / P_design
+            for m, name in [(2, "2倍(分数調波/ダイマー化)"), (0.5, "1/2(2次高調波)"),
+                            (3, "3倍"), (1.0/3, "1/3")]:
+                if abs(r - m) <= 0.2 * m:
+                    rel = f"設計周期の約{name}に相当"
+                    break
+        verdict = (f"FFT実測周期{P_fft:.2f}px は設計換算{P_design:.2f}px とも目視とも一致しない。"
+                   f"{('（'+rel+'）') if rel else ''} 別の周期構造/高調波を拾っている可能性。")
+
+    # Nyquist / undersampling 指摘(1ピラーあたりの画素数 = P_design)
+    nyq_note = ""
+    if np.isfinite(P_design) and P_design < 4.0:
+        severity = "Nyquist(2px)近傍で深刻な undersampling" if P_design < 2.5 else \
+                   "サンプリング限界に近い(1周期あたり数画素のみ)"
+        nyq_note = (f"⚠️ 設計周期{P_design:.2f}px は {severity}。1ピラー約{P_design:.1f}画素しかなく、"
+                    f"ボケMTFで基本波が強く減衰しやすい。FFTで設計周波数にピークが立たない場合、"
+                    f"真ピッチの信号がそもそも安定抽出できず、目視で見える粗い周期は"
+                    f"融合ブロブ/モアレ/2次周期由来の見かけである疑いが強い。"
+                    f"この場合、位置合わせ指標(NCC/一致率)は真ピッチ構造では機能しない。")
+
+    # 解像状況(FWHMとの比較)
+    resolved_note = ""
+    if np.isfinite(P_fft) and np.isfinite(blur.get("fwhm_mean", np.nan)):
+        if P_fft < 1.5 * blur["fwhm_mean"]:
+            resolved_note = (f"検出周期{P_fft:.2f}px < 1.5×FWHM{blur['fwhm_mean']:.2f}px "
+                             f"→ 個々のピラーは非解像(融合)。")
+
+    return {"P_fft": P_fft, "P_design": P_design, "visual": (vlo, vhi),
+            "verdict": verdict, "hyps": [h for h in hyps if h],
+            "nyq_note": nyq_note, "resolved_note": resolved_note}
+
+
 # ============================= レポート =============================
 
 def build_report(img_reports, args) -> str:
@@ -457,8 +547,33 @@ def build_report(img_reports, args) -> str:
             lines.append(f"- 設計周波数との整合: ✅ 一致(想定{exp:.2f}px 近傍にSNR{fft['expected_snr']:.1f}のピーク)")
         elif md is False:
             lines.append(f"- 設計周波数との整合: ⚠️ 不一致(想定{exp:.2f}px 近傍に有意ピークなし → 倍率/pixel pitch要確認)")
+        tp = fft.get("top_peaks", [])
+        if tp:
+            lines.append("- 範囲内の上位ピーク(周期px / SNR): " +
+                         ", ".join(f"{t['period_px']:.2f}px(SNR{t['snr']:.1f})" for t in tp))
         verdict = "✅ 有意な周期信号あり → 1〜4 実施" if fft["has_peak"] else "⛔ 有意な周期信号なし → STOP(1〜4中断)"
         lines.append(f"- **判定: {verdict}** {('※ '+fft['reason']) if fft['reason'] else ''}")
+
+        # 食い違い分析(設計換算 vs FFT実測 vs 目視)
+        disc = rep.get("discrepancy")
+        if disc and (disc.get("verdict") or disc.get("nyq_note")):
+            lines.append("")
+            lines.append("#### 0b. nm/px換算 vs FFT実測 vs 目視 の食い違い分析")
+            P_design = disc["P_design"]
+            lines.append(f"- 設計換算(200nm/{args.nm_per_px}nm/px)= "
+                         + (f"{P_design:.2f}px" if np.isfinite(P_design) else "N/A"))
+            lines.append(f"- FFT実測 = {disc['P_fft']:.2f}px")
+            if args.visual_estimate_px:
+                vlo, vhi = disc["visual"]
+                lines.append(f"- 目視推定 = {vlo:.1f}〜{vhi:.1f}px")
+            if disc["verdict"]:
+                lines.append(f"- **原因判定: {disc['verdict']}**")
+            for h in disc.get("hyps", []):
+                lines.append(f"  - {h}")
+            if disc["nyq_note"]:
+                lines.append(f"- {disc['nyq_note']}")
+            if disc["resolved_note"]:
+                lines.append(f"- {disc['resolved_note']}")
         lines.append(f"- 画像: `{rep['prefix']}_fft_power.png`, `{rep['prefix']}_fft_radial.png`")
         lines.append("")
 
@@ -526,7 +641,11 @@ def process_image(path: Path, args, out_dir: Path):
     save_fft_figures(fft, region, prefix, name)
 
     rep = {"name": name, "prefix": str(prefix), "fft": fft}
+
+    # ゲートがSTOPでも、食い違い(設計換算 vs FFT実測 vs 目視)は判定して報告する。
     if not fft["has_peak"]:
+        rep["discrepancy"] = analyze_discrepancy(
+            fft, {}, args.nm_per_px, args.design_pitch_nm, args.visual_estimate_px)
         return rep
 
     spots = find_bright_spots(img, n_spots=args.n_spots)
@@ -538,6 +657,8 @@ def process_image(path: Path, args, out_dir: Path):
         sigma = 2.0  # フォールバック(FWHM計測失敗時)
     rep["classify"] = classify_regime(spacing, sigma, args.match_threshold)
     rep["filter"] = filter_comparison(spacing, sigma, args.match_threshold)
+    rep["discrepancy"] = analyze_discrepancy(
+        fft, rep["blur"], args.nm_per_px, args.design_pitch_nm, args.visual_estimate_px)
     return rep
 
 
@@ -557,6 +678,10 @@ def build_arg_parser():
     p.add_argument("--snr-thresh", type=float, default=10.0, help="FFTピーク有意判定のSNR閾値(prominence/ノイズフロア)")
     p.add_argument("--n-spots", type=int, default=20, help="FWHM計測する孤立輝点数")
     p.add_argument("--match-threshold", type=float, default=5.0, help="一致率許容差 |Δ|<=")
+    p.add_argument("--visual-estimate-px", type=lambda s: [float(x) for x in s.split(",")],
+                   default=None,
+                   help="目視によるピラー周期推定(px)。単一 '6' または範囲 '5,8'。"
+                        "設計換算・FFT実測との食い違い分析に使用")
     return p
 
 
