@@ -135,6 +135,27 @@ def main():
         post_mask = cv2.warpPerspective(np.ones_like(post_img, dtype=np.uint8), H, (w, h), flags=cv2.INTER_NEAREST)
         common_mask = (post_mask > 0) & (pre_img > 0)
         
+        # 5.5 傷およびゴミ領域の自動検出と除外マスクの計算
+        # 直径15ピクセルの楕円カーネルによるモルフォロジー・オープニング処理
+        # これによりピラー(小さな明るい点)が消え、大きな傷やランドマーク溝などのみが高輝度構造として残る
+        kernel_scratch = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        
+        # pre画像の傷
+        pre_open = cv2.morphologyEx(pre_img, cv2.MORPH_OPEN, kernel_scratch)
+        thresh_pre = np.mean(pre_open) + 2.0 * np.std(pre_open)
+        _, pre_scratch_mask = cv2.threshold(pre_open, thresh_pre, 255, cv2.THRESH_BINARY)
+        
+        # post画像 (アライメント後) の傷
+        post_open = cv2.morphologyEx(post_aligned, cv2.MORPH_OPEN, kernel_scratch)
+        thresh_post = np.mean(post_open) + 2.0 * np.std(post_open)
+        _, post_scratch_mask = cv2.threshold(post_open, thresh_post, 255, cv2.THRESH_BINARY)
+        
+        # 傷マスク (pre または post のいずれかで傷・太い溝がある領域)
+        scratch_mask = (pre_scratch_mask > 0) | (post_scratch_mask > 0)
+        
+        # 共通領域かつ、傷がない領域の最終有効マスク
+        valid_mask = common_mask & (~scratch_mask)
+        
         # 6. 差分画像の計算 (post - pre)
         diff_img = post_aligned.astype(np.float32) - pre_img.astype(np.float32)
         
@@ -152,9 +173,9 @@ def main():
                 y_start = int(np.floor(r * grid_size))
                 y_end = int(np.floor((r + 1) * grid_size))
                 
-                # ブロック内の輝度差とマスク
+                # ブロック内の輝度差とマスク (傷なし共通領域のみ)
                 block_diff = diff_img[y_start:y_end, x_start:x_end]
-                block_mask = common_mask[y_start:y_end, x_start:x_end]
+                block_mask = valid_mask[y_start:y_end, x_start:x_end]
                 
                 valid_pixels = block_diff[block_mask]
                 
