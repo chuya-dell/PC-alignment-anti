@@ -153,6 +153,25 @@ def main():
         ws.column_dimensions['J'].width = 3 # 空き列
         ws.column_dimensions['K'].width = 10
         ws.column_dimensions['L'].width = 10
+        ws.column_dimensions['M'].width = 3 # 空き列
+        ws.column_dimensions['N'].width = 10 # 統計Set名
+        ws.column_dimensions['O'].width = 15 # 有効グリッド数
+        
+        # N列・O列に各セットの有効グリッド数を縦一列で書き込む
+        for s_idx in range(1, 9):
+            set_str = str(s_idx)
+            valid_count = 0
+            if set_str in sets_data:
+                valid_count = int(sets_data[set_str]['Mean'].notna().sum())
+            
+            # N列: Set名
+            cell_name = ws.cell(row=s_idx, column=14, value=f"Set {set_str}")
+            cell_name.font = normal_font
+            
+            # O列: 有効グリッド数
+            cell_val = ws.cell(row=s_idx, column=15, value=valid_count)
+            cell_val.font = normal_font
+            cell_val.alignment = align_right
         
     # 保存処理 (ファイルロックに備えてリトライ付き)
     import time
