@@ -3,15 +3,32 @@ import numpy as np
 import os
 import openpyxl
 from openpyxl.utils import get_column_letter
+import argparse
 
 def main():
-    data_dir = "F:/GoogleDrive_local/1.実験データ_gdrive/5.生データ D/260704 sam 位置合わせ test/foranti/grid_analysis"
-    output_xlsx = "F:/GoogleDrive_local/1.実験データ_gdrive/5.生データ D/260704 sam 位置合わせ test/foranti/grid_intensity_analysis.xlsx"
+    parser = argparse.ArgumentParser(description="Grid Intensity Excel Aggregator")
+    parser.add_argument("data_dir", nargs="?", 
+                        default="F:/GoogleDrive_local/1.実験データ_gdrive/5.生データ D/260704 sam 位置合わせ test/foranti/grid_analysis", 
+                        help="Path to the directory containing grid_analysis CSV files")
+    parser.add_argument("--output-local", action="store_true", 
+                        help="Also output to local git repository as ./grid_intensity_analysis.xlsx")
+    args = parser.parse_args()
+    
+    # バックスラッシュをスラッシュに置換して統一
+    data_dir = args.data_dir.replace('\\', '/')
+    output_xlsx = os.path.join(data_dir, "grid_intensity_analysis.xlsx").replace('\\', '/')
     
     print("Starting Grid Intensity Excel Aggregation...")
     print(f"Source Folder: {data_dir}")
-    print(f"Target Excel:  {output_xlsx}\n")
+    print(f"Target Excel:  {output_xlsx}")
+    if args.output_local:
+        print("Target Local:  ./grid_intensity_analysis.xlsx")
+    print()
     
+    if not os.path.exists(data_dir):
+        print(f"Error: Source folder does not exist: {data_dir}")
+        return
+        
     # グリッドの解像度情報 (2048x2044, G=6.29)
     # cols = 325, rows = 324, total = 105,300
     total_grids = 105300
@@ -62,7 +79,7 @@ def main():
             df_cond = pd.DataFrame({'': np.arange(1, total_grids + 1)})
             
             sets_data = cond_sheets[cond_str]
-            # B〜I列: セット1〜8の Mean データを流し込む
+            # B〜I列: セット1〜8 of Mean データを流し込む
             for s_idx in range(1, 9):
                 set_str = str(s_idx)
                 col_name = f"Set {set_str}"
@@ -174,15 +191,23 @@ def main():
             cell_val.alignment = align_right
         
     # 保存処理 (ファイルロックに備えてリトライ付き)
+    out_paths = [output_xlsx]
+    if args.output_local:
+        out_paths.append("./grid_intensity_analysis.xlsx")
+        
     import time
-    for attempt in range(1, 21):
-        try:
-            wb.save(output_xlsx)
-            print(f"\nSuccessfully generated Grid Excel file at:\n{output_xlsx}")
-            break
-        except PermissionError:
-            print(f"Warning: Excel file is locked during save. Attempt {attempt}/20. Please close the Excel file...")
-            time.sleep(3)
+    for out_path in out_paths:
+        print(f"Saving workbook to: {out_path}")
+        for attempt in range(1, 21):
+            try:
+                # 親フォルダ作成
+                os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+                wb.save(out_path)
+                print(f"  Successfully saved to: {out_path}")
+                break
+            except PermissionError:
+                print(f"  Warning: File is locked. Attempt {attempt}/20. Retrying in 3s...")
+                time.sleep(3)
 
 if __name__ == "__main__":
     main()

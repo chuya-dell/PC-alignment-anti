@@ -14,15 +14,17 @@
 | **`registration.py`** | ランドマークによる粗位置合わせと、2段階ICP（2次多項式変形）によるサブピクセル精密位置合わせ。 |
 | **`run_batch_alignment.py`** | 全64ペア（8条件×8セット）に対してピラー座標検出と位置合わせをバッチ処理する。 |
 | **`run_intensity_comparison.py`** | アライメントされた共通ピラー間の輝度変化量（post - pre）を算出する。 |
-| **`export_intensity_excel.py`** | ピラー認識版のデータを集計し、A列連番（12万行）、B〜I列データ、K〜L列統計のExcelを出力する。 |
-| **`run_grid_difference_analysis.py`** | **【グリッド解析版】** 射影変換（Homography）画像ワープ、傷・ゴミ領域の自動除外、6.29pxグリッド内平均輝度差計算、ヒートマップ可視化までをバッチ処理する。 |
-| **`export_grid_intensity_excel.py`** | **【グリッド解析版】** グリッド平均輝度差データを集約し、Row/Col座標およびN数テーブル付きExcelを出力する。 |
-| **`pillar_intensity_analysis_120k.xlsx`** | ピラー認識解析版の集計Excelデータ（GitHub格納用）。 |
-| **`grid_intensity_analysis.xlsx`** | グリッド差分解析版の集計Excelデータ（GitHub格納用）。 |
+| **`export_intensity_excel.py`** | **【ピラー版Excel出力】** 指定フォルダ内のCSVを集計し、その中に Excel レポートを出力する。 |
+| **`run_grid_difference_analysis.py`** | **【グリッド解析版】** 射影変換（Homography）画像ワープ、傷・ゴミ領域の自動除外、6.29pxグリッド内平均輝度差計算、ヒートマップ可視化をバッチ処理する。 |
+| **`export_grid_intensity_excel.py`** | **【グリッド版Excel出力】** 指定フォルダ内のグリッドCSVを集計し、その中に Excel レポートを出力する。 |
+| **`pillar_intensity_analysis_120k.xlsx`** | ピラー認識解析版のデモ用Excelデータ（GitHub格納用）。 |
+| **`grid_intensity_analysis.xlsx`** | グリッド差分解析版のデモ用Excelデータ（GitHub格納用）。 |
 
 ---
 
 ## 🔬 2つの解析アプローチと実行手順
+
+各 Excel エクスポートスクリプトは、**引数として解析データのあるフォルダパスを渡すことで、そのフォルダの直下に Excel レポートを出力**します。これにより、以前のデータが上書きされるのを防ぎ、データフォルダごとに個別管理が可能です。
 
 ### 1. 【ピラー認識解析版】ピラー単位での輝度差解析
 ナノピラー（ドット）を個々に検出し、対応するペア同士の輝度差を追跡します。
@@ -35,13 +37,15 @@
     ```bash
     python run_intensity_comparison.py
     ```
-3.  **Excelデータ集計出力**:
-    A列に 1〜120,000 の連番を振り、B〜I列にデータを配置、K〜L列に統計を退避したExcelを生成します。
+3.  **Excelデータ集計出力 (任意の解析フォルダを指定)**:
+    A列に 1〜120,000 の連番を振り、B〜I列にデータを配置、K〜L列に統計を退避したExcelを、指定されたフォルダ内に書き出します。
     ```bash
-    python export_intensity_excel.py
+    # 例：解析データがあるフォルダを指定して実行
+    python export_intensity_excel.py "F:/GoogleDrive_local/.../foranti"
     ```
+    *   ※GitHub同期用にローカルにもコピーを作成したい場合は `--output-local` フラグを末尾に付けます。
 
-#### Excelフォーマット (`pillar_intensity_analysis_120k.xlsx`):
+#### Excelフォーマット (`pillar_intensity_analysis.xlsx`):
 *   **A列**: 1〜120,000 の連番（1行目から `1`）
 *   **B〜I列**: 各セットの輝度変化データ（1行目から数値、対応ピラーが無い行は空白）
 *   **J列**: 空白列
@@ -58,10 +62,11 @@
     python run_grid_difference_analysis.py
     ```
     *   **傷・ゴミの自動除外**: 直径15pxのカーネルによるモルフォロジー・オープニング処理（`cv2.MORPH_OPEN`）を施し、ピラーを消し去ることで、太い傷やゴミ・境界溝などの「巨大異常構造」だけを自動検出（傷マスク）し、解析領域から除外（NaN化および黒マスク）します。
-2.  **Excelデータの統合出力**:
-    各マスの平均輝度差を集計したExcelを生成します。
+2.  **Excelデータの統合出力 (任意の解析フォルダを指定)**:
+    各マスの平均輝度差を集計したExcelを、指定されたフォルダ内に書き出します。
     ```bash
-    python export_grid_intensity_excel.py
+    # 例：グリッド解析データがあるフォルダを指定して実行
+    python export_grid_intensity_excel.py "F:/GoogleDrive_local/.../foranti/grid_analysis"
     ```
 
 #### Excelフォーマット (`grid_intensity_analysis.xlsx`):
@@ -79,7 +84,7 @@
 
 別のチャットやClaude等のAIで処理を再現させたい場合は、以下のプロンプトをそのままコピーして入力してください。
 
-> **【引き静ぎ用プロンプト】**
+> **【引き継ぎ用プロンプト】**
 > プラズモニック結晶の位置合わせと輝度変化解析を行います。
 > 解析プログラムと仕様は以下のGitHubリポジトリに公開されています：
 > `https://github.com/chuya-dell/PC-alignment-anti.git`

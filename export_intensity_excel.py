@@ -5,15 +5,32 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 import time
+import argparse
 
 def main():
-    data_dir = "F:/GoogleDrive_local/1.実験データ_gdrive/5.生データ D/260704 sam 位置合わせ test/foranti"
-    output_xlsx = "./pillar_intensity_analysis_120k.xlsx"
+    parser = argparse.ArgumentParser(description="Pillar Intensity Excel Aggregator")
+    parser.add_argument("data_dir", nargs="?", 
+                        default="F:/GoogleDrive_local/1.実験データ_gdrive/5.生データ D/260704 sam 位置合わせ test/foranti", 
+                        help="Path to the directory containing aligned CSV files")
+    parser.add_argument("--output-local", action="store_true", 
+                        help="Also output to local git repository as ./pillar_intensity_analysis_120k.xlsx")
+    args = parser.parse_args()
+    
+    # パス解決
+    data_dir = args.data_dir.replace('\\', '/')
+    output_xlsx = os.path.join(data_dir, "pillar_intensity_analysis.xlsx").replace('\\', '/')
     
     print("Starting Optimized Excel export pipeline (1-120k index in col A)...")
     print(f"Source Folder: {data_dir}")
-    print(f"Target Excel:  {output_xlsx}\n")
+    print(f"Target Excel:  {output_xlsx}")
+    if args.output_local:
+        print("Target Local:  ./pillar_intensity_analysis_120k.xlsx")
+    print()
     
+    if not os.path.exists(data_dir):
+        print(f"Error: Source folder does not exist: {data_dir}")
+        return
+        
     # 8つの条件 (1〜8) ごとにデータを保持
     cond_sheets = {str(c): {} for c in range(1, 9)}
     
@@ -43,41 +60,45 @@ def main():
         if cond not in cond_sheets:
             continue
             
-        aligned_path = os.path.join(data_dir, f)
-        pre_path = os.path.join(data_dir, f"{base}_pillars_pre.csv")
+        aligned_csv = os.path.join(data_dir, f)
+        post_csv = os.path.join(data_dir, f"{base}_pillars_post.csv")
+        pre_csv = os.path.join(data_dir, f"{base}_pillars_pre.csv")
         
-        if not os.path.exists(pre_path):
+        if not os.path.exists(post_csv) or not os.path.exists(pre_csv):
+            print(f"Warning: Original CSVs not found for {base}. Skipped.")
             continue
             
-        # データロード
-        df_aligned = pd.read_csv(aligned_path)
-        df_pre = pd.read_csv(pre_path)
+        df_aligned = pd.read_csv(aligned_csv)
+        df_post_orig = pd.read_csv(post_csv)
+        df_pre = pd.read_csv(pre_csv)
         
-        # 共通部分の抽出 (matched_ref_id != -1)
+        # 傷部分の除外処理 (ICPマッチ率による自動外れ値フィルタリング)
+        # ICPでマッチしなかった (matched_ref_id == -1) ピラーのうち、
+        # 傷やゴミなどによる異常高輝度のもの (box_intensity_3x3 > 120) を検出し、
+        # アライメントから外れたゴミピラーとして計数・除外する
+        unmatched_tgt = df_aligned[df_aligned['matched_ref_id'] == -1]
+        excluded_count = len(unmatched_tgt[unmatched_tgt['box_intensity_3x3'] > 120])
+        
+        # 正常にマッチした (matched_ref_id != -1) ピラーのみを抽出
         matched_df = df_aligned[df_aligned['matched_ref_id'] != -1].copy()
-        excluded_count = len(df_aligned) - len(matched_df)
         
-        # post側の 'pillar_id' をドロップしてマージ時の名前重複を防ぐ
-        if 'pillar_id' in matched_df.columns:
-            matched_df = matched_df.drop(columns=['pillar_id'])
-            
-        # preデータとマージして輝度変化を算出
+        # 基準側 (pre) ピラーの輝度をマージして取得 (衝突防止のため pre_pillar_id にリネーム)
         df_pre_sub = df_pre[['pillar_id', 'box_intensity_3x3']].rename(
-            columns={'box_intensity_3x3': 'box_intensity_3x3_pre'}
+            columns={'pillar_id': 'pre_pillar_id', 'box_intensity_3x3': 'box_intensity_3x3_pre'}
         )
         
         merged = pd.merge(
             matched_df,
             df_pre_sub,
             left_on='matched_ref_id',
-            right_on='pillar_id'
+            right_on='pre_pillar_id'
         )
         
         # 輝度変化量 (post - pre) の算出
         merged['intensity_change'] = merged['box_intensity_3x3'] - merged['box_intensity_3x3_pre']
         
         # 出力データの整理 (基準側IDと輝度変化量)
-        result_df = merged[['pillar_id', 'intensity_change']].copy()
+        result_df = merged[['pre_pillar_id', 'intensity_change']].rename(columns={'pre_pillar_id': 'pillar_id'}).copy()
         result_df = result_df.sort_values('pillar_id').reset_index(drop=True)
         
         cond_sheets[cond][set_num] = {
@@ -99,17 +120,18 @@ def main():
             time.sleep(3)
             
     if writer is None:
-        raise PermissionError(f"Could not open target Excel file because it is locked by another process: {output_xlsx}")
+        raise PermissionError(f"Could not open Excel file for writing because it is locked: {output_xlsx}")
         
     with writer:
         for cond_num in range(1, 9):
             cond_str = str(cond_num)
             sheet_name = f"Condition {cond_str}"
             
-            # A列に 1〜120,000 の連番をあらかじめ生成
-            df_cond = pd.DataFrame({'': np.arange(1, 120001)}) # ヘッダーも空白にして連番だけにする
+            # A列: インデックス (1〜120,000)
+            df_cond = pd.DataFrame({'': np.arange(1, 120001)})
             
             sets_data = cond_sheets[cond_str]
+            # B〜I列: セット1〜8 of 輝度変化量 (1〜12万インデックスに対応)
             for s_idx in range(1, 9):
                 set_str = str(s_idx)
                 col_name = f"Set {set_str}"
@@ -151,52 +173,63 @@ def main():
         sheet_name = f"Condition {cond_str}"
         ws = wb[sheet_name]
         
-        # グリッドラインを表示する設定 (Excelで枠線を表示させる)
+        # グリッドラインを明示的に有効化
         ws.views.sheetView[0].showGridLines = True
         
-        # K列, L列 of headers (セット統計情報の縦書き用)
-        cell_k_head = ws.cell(row=1, column=11, value="Set") # K列 (11)
-        cell_l_head = ws.cell(row=1, column=12, value="N (Pillars)") # L列 (12)
-        for cell in [cell_k_head, cell_l_head]:
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            
+        # 1行目はデータから直接始まる仕様のため、ヘッダー行をデータの実数値で上書き
+        # A1セル: 連番スタート値「1」
+        c_a = ws.cell(row=1, column=1)
+        c_a.value = 1
+        c_a.alignment = Alignment(horizontal="center")
+        c_a.font = normal_font
+        
+        # B1〜I1セル: 各セットデータの最初の値
         sets_data = cond_sheets[cond_str]
-        
-        # A列(連番)の1行目のヘッダーセルを取得してスタイル調整 (空文字列に設定されている)
-        cell_a_head = ws.cell(row=1, column=1)
-        cell_a_head.value = 1 # 1行目から連番にするため、ヘッダー行だったセルを数値の「1」に上書き
-        cell_a_head.font = normal_font
-        cell_a_head.alignment = Alignment(horizontal="center")
-        
-        # B〜I列の1行目のヘッダーセルのフォント/アライメントの調整 (値は Set 1 〜 Set 8)
-        # 1行目から輝度データにするため、ヘッダー行だったセルの値を対応するデータの最初の値で上書きする
         for s_idx in range(1, 9):
             set_str = str(s_idx)
-            col_idx = s_idx + 1 # B列 (2) 〜 I列 (9)
-            cell_data_head = ws.cell(row=1, column=col_idx)
+            col_idx = s_idx + 1 # B (2) 〜 I (9)
+            c_data = ws.cell(row=1, column=col_idx)
             
-            # 元々のヘッダーセル(行1)を、データの最初の値（1つ目の輝度変化量）に書き換える
             if set_str in sets_data and len(sets_data[set_str]['data']) > 0:
                 first_val = float(sets_data[set_str]['data']['intensity_change'].iloc[0])
-                cell_data_head.value = first_val
-                cell_data_head.number_format = '0.00'
+                if not np.isnan(first_val):
+                    c_data.value = first_val
+                    c_data.number_format = '0.00'
+                else:
+                    c_data.value = None
             else:
-                cell_data_head.value = None # データがない場合は空白
+                c_data.value = None
                 
-            cell_data_head.font = normal_font
-            cell_data_head.alignment = Alignment(horizontal="right")
+            c_data.alignment = Alignment(horizontal="right")
+            c_data.font = normal_font
             
-            # J列・K列(統計テーブル)の2行目〜9行目にセット情報を縦書きで追加
+        # J1: 空白
+        ws.cell(row=1, column=10).value = None
+        
+        # K1: "Set", L1: "N" でヘッダーを上書き
+        c_k_header = ws.cell(row=1, column=11, value="Set")
+        c_l_header = ws.cell(row=1, column=12, value="N")
+        
+        c_k_header.font = header_font
+        c_l_header.font = header_font
+        c_k_header.fill = header_fill
+        c_l_header.fill = header_fill
+        c_k_header.alignment = Alignment(horizontal="center")
+        c_l_header.alignment = Alignment(horizontal="center")
+        
+        # K2〜K9: セット名、L2〜L9: 各セットの有効ピラー数 (N数)
+        for s_idx in range(1, 9):
+            set_str = str(s_idx)
             row_info = s_idx + 1
+            
             c_k = ws.cell(row=row_info, column=11, value=f"Set {set_str}")
+            c_k.alignment = Alignment(horizontal="center")
             
             if set_str in sets_data:
-                total_count = sets_data[set_str]['total_count']
-                c_l = ws.cell(row=row_info, column=12, value=total_count)
-                c_l.number_format = '#,##0'
+                valid_count = sets_data[set_str]['total_count']
+                c_l = ws.cell(row=row_info, column=12, value=valid_count)
                 c_l.alignment = Alignment(horizontal="right")
+                c_l.number_format = '#,##0'
             else:
                 c_l = ws.cell(row=row_info, column=12, value="No Data")
                 c_l.alignment = Alignment(horizontal="center")
@@ -215,14 +248,23 @@ def main():
         ws.column_dimensions['K'].width = 10
         ws.column_dimensions['L'].width = 15
         
-    for attempt in range(1, 21):
-        try:
-            wb.save(output_xlsx)
-            print(f"\nSuccessfully generated Optimized Excel file at:\n{output_xlsx}")
-            break
-        except PermissionError:
-            print(f"Warning: Excel file is locked during save. Attempt {attempt}/20. Please close the Excel file...")
-            time.sleep(3)
+    # 保存処理 (Google Drive と Local の両方に書き出す、ファイルロックに備えてリトライ付き)
+    out_paths = [output_xlsx]
+    if args.output_local:
+        out_paths.append("./pillar_intensity_analysis_120k.xlsx")
+        
+    for out_path in out_paths:
+        print(f"Saving workbook to: {out_path}")
+        for attempt in range(1, 21):
+            try:
+                # 親ディレクトリ作成 (必要な場合)
+                os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+                wb.save(out_path)
+                print(f"  Successfully saved to: {out_path}")
+                break
+            except PermissionError:
+                print(f"  Warning: File is locked. Attempt {attempt}/20. Retrying in 3s...")
+                time.sleep(3)
 
 if __name__ == "__main__":
     main()
