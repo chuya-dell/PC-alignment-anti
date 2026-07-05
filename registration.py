@@ -31,14 +31,18 @@ def detect_grooves(img):
     # 1. Vertical Groove (X coordinate)
     # Average columns vertically in the central y-band [500, 1500] to avoid edge artifacts
     x_profile = np.mean(img[500:1500, 0:300], axis=0)
-    x_profile_smooth = np.convolve(x_profile, np.ones(15)/15, mode='same')
+    # Remove shading gradient by subtracting a 51-pixel moving average
+    x_detrend = x_profile - np.convolve(x_profile, np.ones(51)/51, mode='same')
+    x_profile_smooth = np.convolve(x_detrend, np.ones(15)/15, mode='same')
     groove_x_idx = 30 + np.argmin(x_profile_smooth[30:270])
     groove_x = get_subpixel_min(x_profile_smooth, groove_x_idx)
     
     # 2. Horizontal Groove (Y coordinate)
     # Average rows horizontally in the right-side x-band [1000, 1900]
     y_profile = np.mean(img[0:300, 1000:1900], axis=1)
-    y_profile_smooth = np.convolve(y_profile, np.ones(15)/15, mode='same')
+    # Remove shading gradient
+    y_detrend = y_profile - np.convolve(y_profile, np.ones(51)/51, mode='same')
+    y_profile_smooth = np.convolve(y_detrend, np.ones(15)/15, mode='same')
     groove_y_idx = 30 + np.argmin(y_profile_smooth[30:270])
     groove_y = get_subpixel_min(y_profile_smooth, groove_y_idx)
     
@@ -108,7 +112,7 @@ def find_grid_orientation(pts):
     
     return np.radians(best_angle_deg)
 
-def fine_alignment_icp(ref_pts, tgt_pts_coarse, max_iter=100, tolerance=1e-6):
+def fine_alignment_icp(ref_pts, tgt_pts_coarse, max_iter=100, tolerance=1e-6, return_diagnostics=False):
     """
     Iterative Closest Point (ICP) registration between reference and coarse-aligned target points.
     Estimates a 2nd-order quadratic polynomial transform to correct non-linear lens distortion.
@@ -125,7 +129,11 @@ def fine_alignment_icp(ref_pts, tgt_pts_coarse, max_iter=100, tolerance=1e-6):
     # Best-fit coefficients
     C_best = np.zeros((6, 2))
     
+    converged = False
+    iter_count = 0
+    
     for i in range(max_iter):
+        iter_count = i + 1
         # Two-stage dynamic thresholding:
         # First 3 iterations use 3.5px to capture the remaining coarse translation.
         # Remaining iterations use 1.5px to lock onto the sub-pixel grid and avoid grid aliasing.
@@ -161,13 +169,17 @@ def fine_alignment_icp(ref_pts, tgt_pts_coarse, max_iter=100, tolerance=1e-6):
         # Check convergence
         mean_err = np.mean(distances[valid])
         if abs(prev_err - mean_err) < tolerance:
+            converged = True
             break
         prev_err = mean_err
         
     # Extract linear affine part [A | t] for summary representation (first 3 coefficients)
     H_summary = C_best.T[:, 0:3]
     
-    return H_summary, aligned_pts
+    if return_diagnostics:
+        return H_summary, aligned_pts, iter_count, converged
+    else:
+        return H_summary, aligned_pts
 
 def fine_alignment_local_refinement(ref_pts, tgt_pts_coarse, img_w=2048, img_h=2044, grid_n=8):
     """
@@ -224,7 +236,7 @@ def fine_alignment_local_refinement(ref_pts, tgt_pts_coarse, img_w=2048, img_h=2
             
     return H_global, refined_pts
 
-def align_and_match_dataframes(df_ref, df_tgt, ref_img_path, tgt_img_path):
+def align_and_match_dataframes(df_ref, df_tgt, ref_img_path, tgt_img_path, return_diagnostics=False):
     """
     Performs full 2-stage alignment on target dataframe coordinates to match reference.
     Stage 1: Landmark translation and vertical groove rotation (Stage 1.5)
@@ -270,7 +282,13 @@ def align_and_match_dataframes(df_ref, df_tgt, ref_img_path, tgt_img_path):
     
     # 2. Fine shift using global 2nd-order polynomial ICP
     print("Running Global Polynomial Registration...")
-    H_fine, tgt_coords_fine = fine_alignment_icp(ref_coords, tgt_coords_coarse)
+    if return_diagnostics:
+        H_fine, tgt_coords_fine, iter_count, converged = fine_alignment_icp(
+            ref_coords, tgt_coords_coarse, return_diagnostics=True
+        )
+    else:
+        H_fine, tgt_coords_fine = fine_alignment_icp(ref_coords, tgt_coords_coarse)
+        iter_count, converged = -1, False
     
     # Combine Coarse translation/rotation and Fine polynomial linear part for H_final
     A_fine = H_fine[0:2, 0:2]
@@ -279,8 +297,8 @@ def align_and_match_dataframes(df_ref, df_tgt, ref_img_path, tgt_img_path):
     # Mathematical synthesis of final affine matrix [A_final | t_final]
     # p_aligned = A_fine * R * p + A_fine * (c - R * c + t_coarse) + t_fine
     A_final = A_fine @ R
-    t_coarse = np.array([dx_coarse, dy_coarse])
-    t_final = A_fine @ (c - R @ c + t_coarse) + t_fine
+    t_coarse_vec = np.array([dx_coarse, dy_coarse])
+    t_final = A_fine @ (c - R @ c + t_coarse_vec) + t_fine
     
     H_final = np.zeros((2, 3))
     H_final[0:2, 0:2] = A_final
@@ -309,4 +327,7 @@ def align_and_match_dataframes(df_ref, df_tgt, ref_img_path, tgt_img_path):
     matched_count = np.sum(~no_match)
     print(f"Alignment completed: {matched_count}/{len(df_tgt)} pillars matched within 1.5 pixels ({matched_count/len(df_tgt)*100:.2f}%)")
     
-    return df_tgt_aligned, H_final
+    if return_diagnostics:
+        return df_tgt_aligned, H_final, iter_count, converged, dx_coarse, dy_coarse
+    else:
+        return df_tgt_aligned, H_final
