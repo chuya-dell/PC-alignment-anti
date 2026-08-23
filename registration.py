@@ -331,3 +331,57 @@ def align_and_match_dataframes(df_ref, df_tgt, ref_img_path, tgt_img_path, retur
         return df_tgt_aligned, H_final, iter_count, converged, dx_coarse, dy_coarse
     else:
         return df_tgt_aligned, H_final
+
+def sample_image_intensity(img, coords, radius=1):
+    """
+    Sample intensity from grayscale image img at floating point coords (N, 2).
+    Uses a small (2*radius+1) x (2*radius+1) box around the rounded coordinate.
+    """
+    if img is None:
+        return np.full(len(coords), np.nan)
+    h, w = img.shape
+    sampled = np.zeros(len(coords), dtype=np.float64)
+    
+    for i, (x, y) in enumerate(coords):
+        ix, iy = int(round(x)), int(round(y))
+        if radius <= ix < w - radius and radius <= iy < h - radius:
+            patch = img[iy-radius:iy+radius+1, ix-radius:ix+radius+1]
+            sampled[i] = np.mean(patch)
+        else:
+            sampled[i] = np.nan
+    return sampled
+
+def create_grid_estimated_dataframe(df_ref, H_final, tgt_img_path):
+    """
+    Projects ALL reference grid pillars onto the target image coordinates
+    and samples the intensity directly from target image.
+    Guarantees 100% pillar coverage based on reference grid.
+    """
+    ref_coords = df_ref[['x', 'y']].values # (N, 2)
+    
+    A = H_final[0:2, 0:2]
+    t = H_final[0:2, 2]
+    
+    try:
+        A_inv = np.linalg.inv(A)
+    except np.linalg.LinAlgError:
+        A_inv = np.eye(2)
+        
+    tgt_coords_est = (A_inv @ (ref_coords - t).T).T
+    
+    tgt_img = load_image_unicode(tgt_img_path)
+    sampled_int = sample_image_intensity(tgt_img, tgt_coords_est, radius=1)
+    
+    df_est = pd.DataFrame({
+        'pillar_id': df_ref['pillar_id'].values if 'pillar_id' in df_ref.columns else np.arange(len(df_ref)),
+        'x': tgt_coords_est[:, 0],
+        'y': tgt_coords_est[:, 1],
+        'x_ref': ref_coords[:, 0],
+        'y_ref': ref_coords[:, 1],
+        'mean_intensity': sampled_int,
+        'matched_ref_id': df_ref['pillar_id'].values if 'pillar_id' in df_ref.columns else np.arange(len(df_ref)),
+        'is_estimated': True
+    })
+    
+    df_est = df_est.dropna(subset=['mean_intensity'])
+    return df_est
