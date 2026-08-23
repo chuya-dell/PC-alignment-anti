@@ -5,9 +5,9 @@ import time
 from voronoi_analyzer import analyze_voronoi
 from generate_excel_summary import analyze_intensities_excel
 
-def run_batch_analysis(target_dir, sigmas=[3, 5], margin=50):
+def run_batch_analysis(target_dir, sigmas=[3, 5], margin=50, bg_prefixes=None):
     """
-    Run BOTH Voronoi Spatial Analysis AND Background (0-series) Excel Summary
+    Run BOTH Voronoi Spatial Analysis AND Background (0-series or custom prefixes) Excel Summary
     on all CSV files in the target directory.
     """
     if not os.path.exists(target_dir):
@@ -20,6 +20,7 @@ def run_batch_analysis(target_dir, sigmas=[3, 5], margin=50):
     print(f"\n========================================================")
     print(f" 統合自動解析（ボロノイ解析 ＋ バックグラウンド集計）")
     print(f" 対象フォルダ: {os.path.abspath(target_dir)}")
+    print(f" 基準識別子  : {bg_prefixes if bg_prefixes else 'デフォルト (0番台)'}")
     print(f" 検出CSV数  : {len(csv_files)} 件")
     print(f"========================================================\n")
 
@@ -36,11 +37,11 @@ def run_batch_analysis(target_dir, sigmas=[3, 5], margin=50):
         except Exception as e:
             print(f"   ボロノイ解析の注意 ({base_name}): {e}")
 
-    # 2. バックグラウンド (0番台) 基準のエクセル集計を出力 (3σ, 5σ)
-    print("\n--- [2/2] バックグラウンド (0番台) 基準の Mean + 3σ/5σ エクセル集計を出力中 ---")
+    # 2. バックグラウンド 基準のエクセル集計を出力 (3σ, 5σ)
+    print("\n--- [2/2] バックグラウンド 基準の Mean + 3σ/5σ エクセル集計を出力中 ---")
     excel_path = os.path.join(target_dir, "intensity_summary_3s_5s.xlsx")
     try:
-        analyze_intensities_excel(input_dir=target_dir, output_excel_path=excel_path, sigmas=sigmas)
+        analyze_intensities_excel(input_dir=target_dir, output_excel_path=excel_path, sigmas=sigmas, bg_prefixes=bg_prefixes)
     except Exception as e:
         print(f" エクセル集計の注意: {e}")
 
@@ -52,10 +53,11 @@ def run_batch_analysis(target_dir, sigmas=[3, 5], margin=50):
     print(f"========================================================\n")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run BOTH Voronoi Spatial Analysis & Background (0-series) Excel Summary")
+    parser = argparse.ArgumentParser(description="Run BOTH Voronoi Spatial Analysis & Background Excel Summary")
     parser.add_argument("--dir", type=str, required=True, help="Directory containing sequence CSV files")
     parser.add_argument("--sigmas", type=int, nargs="+", default=[3, 5], help="n values for Mean + n*sigma (default: 3 5)")
     parser.add_argument("--margin", type=int, default=50, help="ROI boundary margin in pixels for Voronoi (default: 50)")
+    parser.add_argument("--bg", type=str, nargs="+", default=None, help="Custom background sequence identifiers (e.g. 13 or 10 11)")
 
     args = parser.parse_args()
-    run_batch_analysis(args.dir, sigmas=args.sigmas, margin=args.margin)
+    run_batch_analysis(args.dir, sigmas=args.sigmas, margin=args.margin, bg_prefixes=args.bg)

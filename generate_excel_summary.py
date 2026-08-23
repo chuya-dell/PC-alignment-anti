@@ -5,9 +5,9 @@ import argparse
 import numpy as np
 import pandas as pd
 
-def get_bg_and_target_files(input_dir_or_files):
+def get_bg_and_target_files(input_dir_or_files, bg_prefixes=None):
     """
-    Find and group CSV files into background (starting with 0) and target files.
+    Find and group CSV files into background (custom prefixes/numbers or starting with 0) and target files.
     """
     if isinstance(input_dir_or_files, str) and os.path.isdir(input_dir_or_files):
         csv_files = glob.glob(os.path.join(input_dir_or_files, "*.csv"))
@@ -21,25 +21,33 @@ def get_bg_and_target_files(input_dir_or_files):
     bg_files = []
     tgt_files = []
 
+    def is_bg(filename):
+        base = os.path.basename(filename)
+        if bg_prefixes:
+            str_prefixes = [str(b).strip() for b in bg_prefixes]
+            for bg in str_prefixes:
+                # Match patterns like "13-", "13_", "No.13", "No13", or starting with "13"
+                pattern = rf'(?:^|[\-_bB][gG]?|No\.?)\s*{re.escape(bg)}(?:[\-_\s\.]|$)'
+                if re.search(pattern, base, re.IGNORECASE) or base.startswith(bg):
+                    return True
+            return False
+        else:
+            match = re.search(r'(\d+)-(\d+)', base)
+            if match:
+                major, minor = match.group(1), match.group(2)
+                if major == '0' or minor == '0':
+                    return True
+            return base.startswith('0')
+
     for f in csv_files:
-        base = os.path.basename(f)
-        # Check if filename starts with 0 (e.g., 0-1, 0-2, 0_pillars, etc.)
-        # Also check for patterns like 1-0 where '0' is reference
-        match = re.search(r'(\d+)-(\d+)', base)
-        if match:
-            major, minor = match.group(1), match.group(2)
-            if major == '0' or minor == '0':
-                bg_files.append(f)
-            else:
-                tgt_files.append(f)
-        elif base.startswith('0'):
+        if is_bg(f):
             bg_files.append(f)
         else:
             tgt_files.append(f)
 
     return bg_files, tgt_files
 
-def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='mean_intensity', sigmas=[3, 5]):
+def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='mean_intensity', sigmas=[3, 5], bg_prefixes=None):
     """
     Compute background mean + n*sigma thresholds and evaluate target sequence CSV files.
     Exports result to a cleanly formatted Excel file (.xlsx).
@@ -47,7 +55,7 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
     if not os.path.exists(input_dir):
         raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
 
-    bg_files, tgt_files = get_bg_and_target_files(input_dir)
+    bg_files, tgt_files = get_bg_and_target_files(input_dir, bg_prefixes=bg_prefixes)
 
     print(f"=== CSV ファイル検出結果 ===")
     print(f"バックグラウンド (0番台) ファイル数 : {len(bg_files)} 件")
