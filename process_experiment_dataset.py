@@ -21,6 +21,11 @@ def is_bg_file_name(filename, bg_prefixes):
             return True
     return False
 
+def save_csv_safe(df, filepath):
+    os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+    with open(filepath, 'w', encoding='utf-8', newline='') as f:
+        df.to_csv(f, index=False)
+
 def process_full_experiment_folder(exp_dir, bg_prefixes, pitch=5.5):
     """
     Complete End-to-End Pipeline for Plasmon Pillar Arrays:
@@ -73,7 +78,7 @@ def process_full_experiment_folder(exp_dir, bg_prefixes, pitch=5.5):
                 min_dist=4,
                 top_hat_size=15
             )
-            df.to_csv(csv_path, index=False)
+            save_csv_safe(df, csv_path)
             print(f"  -> 保存完了 ({len(df):,} ピラー検出)")
 
         detected_csvs[img_file] = csv_path
@@ -114,11 +119,11 @@ def process_full_experiment_folder(exp_dir, bg_prefixes, pitch=5.5):
             df_tgt = pd.read_csv(tgt_csv_path)
             df_tgt['matched_ref_id'] = df_tgt['pillar_id'] if 'pillar_id' in df_tgt.columns else np.arange(len(df_tgt))
             df_tgt['alignment_distance'] = 0.0
-            df_tgt.to_csv(aligned_csv_path, index=False)
+            save_csv_safe(df_tgt, aligned_csv_path)
             
             # Pattern B self
             df_tgt['is_estimated'] = True
-            df_tgt.to_csv(estimated_csv_path, index=False)
+            save_csv_safe(df_tgt, estimated_csv_path)
             continue
 
         print(f"  [アライメント処理] 基準({ref_img_file}) <-- {tgt_file}")
@@ -130,7 +135,7 @@ def process_full_experiment_folder(exp_dir, bg_prefixes, pitch=5.5):
                 ref_img_path=ref_img_path,
                 tgt_img_path=tgt_img_path
             )
-            df_aligned.to_csv(aligned_csv_path, index=False)
+            save_csv_safe(df_aligned, aligned_csv_path)
 
             # Pattern B: Estimate all reference grid coordinates on target image
             df_est = create_grid_estimated_dataframe(
@@ -138,7 +143,7 @@ def process_full_experiment_folder(exp_dir, bg_prefixes, pitch=5.5):
                 H_final=H_final,
                 tgt_img_path=tgt_img_path
             )
-            df_est.to_csv(estimated_csv_path, index=False)
+            save_csv_safe(df_est, estimated_csv_path)
 
         except Exception as e:
             print(f"  [アライメントスキップ/注意] {tgt_file}: {e}")
