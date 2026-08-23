@@ -3,7 +3,7 @@ import sys
 import pandas as pd
 import numpy as np
 
-from registration import align_and_match_dataframes
+from registration import align_and_match_dataframes, create_grid_estimated_dataframe
 
 def main():
     raw_folder = "G:/マイドライブ/1.実験データ_gdrive/5.生データ D/260630 sam dna/位置合わせ"
@@ -43,10 +43,16 @@ def main():
                 tgt_img_path=tgt_img_path
             )
             
-            # Save the aligned DataFrame
+            # Pattern A: Save the aligned DataFrame (Direct matches)
             out_csv_path = os.path.join(outputs_dir, f"{tgt_name}_aligned_to_1-0.csv")
             df_aligned.to_csv(out_csv_path, index=False)
-            print(f"アライメント結果を保存しました: {out_csv_path}")
+            print(f"[Pattern A] アライメント実測CSV保存: {out_csv_path}")
+
+            # Pattern B: Generate Full Reference Grid Projection (Estimated pillars with sampled intensity)
+            df_est = create_grid_estimated_dataframe(df_ref=df_ref, H_final=H, tgt_img_path=tgt_img_path)
+            est_csv_path = os.path.join(outputs_dir, f"{tgt_name}_estimated_grid_from_1-0.csv")
+            df_est.to_csv(est_csv_path, index=False)
+            print(f"[Pattern B] 全基準格子推定CSV保存: {est_csv_path}")
             
             # Evaluate registration quality
             dists = df_aligned['alignment_distance'].values

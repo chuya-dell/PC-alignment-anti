@@ -11,6 +11,8 @@ if script_dir not in sys.path:
 from analyzer import analyze_image
 from visualize import create_detection_overlay
 from summarize import generate_summary
+from voronoi_analyzer import analyze_voronoi
+from generate_excel_summary import analyze_intensities_excel
 
 def run_pipeline():
     parser = argparse.ArgumentParser(description="Plasmon Analysis Pipeline Orchestrator")
@@ -128,7 +130,7 @@ def run_pipeline():
     )
     
     # Step 3: Generate Summary statistics & plots
-    print("\n[STEP 3/3] 統計結果およびグラフ（ヒストグラム・ヒートマップ）を生成中...")
+    print("\n[STEP 3/5] 統計結果およびグラフ（ヒストグラム・ヒートマップ）を生成中...")
     generate_summary(
         csv_path=csv_path,
         histogram_path=hist_path,
@@ -136,12 +138,26 @@ def run_pipeline():
         marker_size=args.size
     )
     
+    # Step 4: Perform Voronoi Spatial Analysis
+    print("\n[STEP 4/5] ボロノイ空間分割・配位数・秩序度 (ψ6) 解析を実行中...")
+    try:
+        analyze_voronoi(csv_path=csv_path, output_dir=exp_dir)
+    except Exception as e:
+        print(f"ボロノイ解析中のスキップ/注意: {e}")
+
+    # Step 5: Generate Background (0-series) Mean + 3σ/5σ Excel Summary
+    print("\n[STEP 5/5] バックグラウンド (0番台) 基準の Mean + 3σ/5σ エクセル集計を更新中...")
+    try:
+        analyze_intensities_excel(input_dir=exp_dir, sigmas=[3, 5])
+    except Exception as e:
+        print(f"エクセル集計中のスキップ/注意: {e}")
+
     t_total = time.time() - t_start
-    print(f"\n================ パイプライン処理完了 ================")
+    print(f"\n================ パイプライン全ステップ完了 ================")
     print(f"総処理時間: {t_total:.2f} 秒")
-    print(f"出力ファイルはすべて以下のフォルダに保存されました:")
+    print(f"出力ファイル（CSV・可視化画像・ボロノイ・エクセル）は以下に保存されました:")
     print(f"-> {os.path.abspath(exp_dir)}")
-    print(f"====================================================\n")
+    print(f"==========================================================\n")
 
 if __name__ == "__main__":
     run_pipeline()
