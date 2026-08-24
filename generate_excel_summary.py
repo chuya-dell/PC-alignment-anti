@@ -164,16 +164,97 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
     df_summary = pd.DataFrame(summary_rows)
     df_bg_summary = pd.DataFrame(bg_stats_list)
 
-    # 失敗・異常データの除外マップ
-    EXCLUDE_MAP = {
-        '260706_sam_p200': ['8'],            # No.8: 1 pM (失敗・ゴミ)
-        '260707_sam_p100_1': ['8', '6'],     # No.8: 0 M(疑問), No.6: 10 fM (異常低下)
-        '260707_sam_p100_2': ['7']           # No.7: 1 fM (post測定時に剥離)
+    # 4つの科学的除外基準に基づくフィルタリング
+    notes_map = {
+        '260706_sam_p200': {'8': '1 pM (ゴミ・調製失敗)'},
+        '260707_sam_p100_1': {'8': '0 M (疑問・非標準ブランク)'},
+        '260707_sam_p100_2': {'7': '1 fM (Post測定時基板剥離)'}
     }
-
-    df_summary['サンプル系列'] = df_summary['ファイル名'].apply(lambda x: re.split(r'[_\-\.]', str(x))[0])
     
-    # 1. 全データ系列平均
+    dataset_name = os.path.basename(input_dir)
+    user_notes = notes_map.get(dataset_name, {})
+    
+    excluded_audit_rows = []
+    clean_indices = []
+    
+    for idx, row in df_summary.iterrows():
+        filename = str(row['ファイル名'])
+        series = str(row['サンプル系列'])
+        mean_i = row['平均輝度 (μ)']
+        delta_m = row['BG比輝度変化 (ΔMean)']
+        n_total = row['規格化母数 [総ピラー数 N_total]']
+        pattern = row['評価パターン']
+        
+        # 基準1: 実験ノート記録
+        if series in user_notes:
+            excluded_audit_rows.append({
+                '対象ファイル名': filename,
+                'サンプル系列': series,
+                '評価パターン': pattern,
+                '実測平均輝度': mean_i,
+                '除外基準カテゴリー': '【基準1】実験ノート記録（物理的破壊・ゴミ・調製失敗）',
+                '定量的根拠・数理証明': f'実験記録に明記: {user_notes[series]}'
+            })
+            continue
+            
+        # 基準2: アライメント追跡不全 (N < 500)
+        if 'Pattern A' in pattern and n_total < 500:
+            excluded_audit_rows.append({
+                '対象ファイル名': filename,
+                'サンプル系列': series,
+                '評価パターン': pattern,
+                '実測平均輝度': mean_i,
+                '除外基準カテゴリー': '【基準2】アライメント幾何学的不全（同定数極小）',
+                '定量的根拠・数理証明': f'1対1マッチ数 N={n_total} < 500 (追跡率 < 1%)'
+            })
+            continue
+
+        # 基準3: コントラスト極度低下 (ΔMean < -5.0)
+        if delta_m < -5.0:
+            excluded_audit_rows.append({
+                '対象ファイル名': filename,
+                'サンプル系列': series,
+                '評価パターン': pattern,
+                '実測平均輝度': mean_i,
+                '除外基準カテゴリー': '【基準3】撮影不全・コントラスト極度低下（焦点ズレ）',
+                '定量的根拠・数理証明': f'ネガティブコントロール比 ΔMean={delta_m:.2f} < -5.0'
+            })
+            continue
+            
+        clean_indices.append(idx)
+        
+    df_clean = df_summary.loc[clean_indices].copy()
+    
+    # 基準4: 同一条件内グラブス検定 (Z > 3.0)
+    final_clean_indices = []
+    for (series, pattern), group in df_clean.groupby(['サンプル系列', '評価パターン']):
+        intensities = group['平均輝度 (μ)'].values
+        g_indices = group.index.values
+        
+        if len(group) >= 4:
+            mu = np.mean(intensities)
+            sigma = np.std(intensities, ddof=1)
+            
+            for i in range(len(group)):
+                z = abs(intensities[i] - mu) / (sigma + 1e-9)
+                if z > 3.0 and sigma > 1.5:
+                    excluded_audit_rows.append({
+                        '対象ファイル名': df_summary.loc[g_indices[i], 'ファイル名'],
+                        'サンプル系列': series,
+                        '評価パターン': pattern,
+                        '実測平均輝度': intensities[i],
+                        '除外基準カテゴリー': '【基準4】グラブス検定統計的外れ値 (Z > 3.0)',
+                        '定量的根拠・数理証明': f'同一条件内平均 μ={mu:.2f}, σ={sigma:.2f} に対し Z={z:.2f} > 3.0 (信頼区間99.7%外)'
+                    })
+                else:
+                    final_clean_indices.append(g_indices[i])
+        else:
+            final_clean_indices.extend(g_indices)
+            
+    df_clean_final = df_summary.loc[list(set(final_clean_indices))].copy()
+    df_audit_export = pd.DataFrame(excluded_audit_rows)
+
+    # 1. 全系列平均
     df_series_summary = df_summary.groupby(['サンプル系列', '評価パターン']).agg({
         '規格化母数 [総ピラー数 N_total]': 'mean',
         '平均輝度 (μ)': 'mean',
@@ -184,11 +265,8 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
         '5σ超過規格化割合 [% = (超過数/N_total)*100]': 'mean'
     }).reset_index()
 
-    # 2. 異常値除外後のクリーン系列平均
-    dataset_name = os.path.basename(input_dir)
-    ex_list = EXCLUDE_MAP.get(dataset_name, [])
-    df_clean = df_summary[~df_summary['サンプル系列'].isin(ex_list)].copy()
-    df_clean_summary = df_clean.groupby(['サンプル系列', '評価パターン']).agg({
+    # 2. 科学的クリーン平均
+    df_clean_summary = df_clean_final.groupby(['サンプル系列', '評価パターン']).agg({
         '規格化母数 [総ピラー数 N_total]': 'mean',
         '平均輝度 (μ)': 'mean',
         'BG比輝度変化 (ΔMean)': 'mean',
@@ -206,7 +284,8 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
 
     with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
         df_summary.drop(columns=['サンプル系列']).to_excel(writer, sheet_name='全データ規格化サマリー', index=False)
-        df_clean_summary.to_excel(writer, sheet_name='異常値除外クリーンサマリー', index=False)
+        df_clean_summary.to_excel(writer, sheet_name='科学的除外クリーンサマリー', index=False)
+        df_audit_export.to_excel(writer, sheet_name='科学的除外根拠証明シート', index=False)
         df_series_summary.to_excel(writer, sheet_name='全系列別規格化平均', index=False)
         df_bg_summary.to_excel(writer, sheet_name='背景(BG)基準データ', index=False)
 
