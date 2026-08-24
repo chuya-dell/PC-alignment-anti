@@ -13,12 +13,18 @@ def process_tile(tile_img, x_offset, y_offset, tile_bounds, min_area=3, max_area
     tile_bounds is a tuple of (x_min, x_max, y_min, y_max) defining the unique zone
     for detections in global coordinates (to prevent duplicate counts at boundaries).
     """
+    # Ensure tile_img is float32
+    if tile_img.dtype != np.float32:
+        tile_img = tile_img.astype(np.float32)
+        
     if invert:
-        tile_img = 255 - tile_img
+        # For float32 normalized to [0, 1]
+        tile_img = 1.0 - tile_img
 
     # 1. Background subtraction using Morphological Top-Hat filter
     # This isolates small bright spots (pillars) on a varying background
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (top_hat_size, top_hat_size))
+    # cv2.morphologyEx works with float32 directly
     tophat = cv2.morphologyEx(tile_img, cv2.MORPH_TOPHAT, kernel)
     
     # 2. Noise reduction (increased to 5x5 to better filter high-frequency noise)
@@ -100,11 +106,28 @@ def process_tile(tile_img, x_offset, y_offset, tile_bounds, min_area=3, max_area
         # Determine threshold using local background subtraction (highly robust to local illumination variations)
         # Compute local background using a box filter (size 21x21 is larger than a few pillars)
         bg_local = cv2.boxFilter(blurred, -1, (21, 21))
-        local_contrast = blurred.astype(np.float32) - bg_local.astype(np.float32)
+        local_contrast = blurred - bg_local
         
-        # Default contrast threshold is 1.5 (optimized for 5x5 Gaussian filtered local contrast)
-        thresh_val = 1.5 if threshold is None else threshold
-        
+        # DYNAMIC THRESHOLDING FOR FLOAT32
+        # Since image is [0, 1], absolute thresholds like 1.5 are invalid.
+        # We use a percentile-based approach on the positive local contrast.
+        if threshold is None:
+            # Only consider positive contrast pixels to find a robust statistical threshold for peaks
+            pos_contrast = local_contrast[local_contrast > 0]
+            if len(pos_contrast) > 0:
+                # 99.5th percentile of positive contrast is a robust dynamic threshold for sparse peaks
+                thresh_val = np.percentile(pos_contrast, 99.5)
+            else:
+                thresh_val = 0.01 # Fallback
+        else:
+            # If user provides a threshold, treat it as a multiplier for standard deviation
+            pos_contrast = local_contrast[local_contrast > 0]
+            if len(pos_contrast) > 0:
+                std_contrast = np.std(pos_contrast)
+                thresh_val = threshold * std_contrast
+            else:
+                thresh_val = 0.01
+                
         peaks_mask = (blurred == dilated) & (local_contrast >= thresh_val)
         
         # Resolve flat-top duplicate peaks using connected components
@@ -215,26 +238,22 @@ def analyze_image(image_path, tile_size=2000, overlap=50, min_area=3, max_area=1
     # Read preserving 16-bit depth (unicode path safe)
     try:
         # IMREAD_ANYDEPTH preserves 16-bit TIFFs instead of truncating to 8-bit
-        img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_ANYDEPTH)
+        img_raw = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_ANYDEPTH)
     except Exception as e:
-        img = None
-    if img is None:
+        img_raw = None
+    if img_raw is None:
         raise ValueError(f"Could not load image: {image_path}")
     
-    # 1. Global Flat-field Normalization (Median Scaling)
-    # Background is mostly dark, the most common values represent the uniform background illumination.
-    # Convert to float32 for precise mathematical operations before returning to uint16
-    img_float = img.astype(np.float32)
-    bg_median = np.median(img_float)
-    if bg_median > 0:
-        # Scale to an arbitrary standard median (e.g. 500 for 16-bit) to correct lamp fluctuations
-        TARGET_MEDIAN = 500.0
-        img_float = img_float * (TARGET_MEDIAN / bg_median)
-        
-    img = np.clip(img_float, 0, 65535).astype(np.uint16)
+    # LAYER A: 16-bit to float32 [0.0 - 1.0] normalization
+    # Raw max can be arbitrary (e.g. 65535 or 4095). We scale based on robust percentiles or theoretical max.
+    # Assuming 16-bit theoretical max (65535) for absolute consistency across images.
+    img = img_raw.astype(np.float32) / 65535.0
+    
+    # Note: Global Flat-field Normalization (Median Scaling) is temporarily disabled 
+    # to maintain strict absolute intensities for rigorous paired difference testing.
     
     height, width = img.shape
-    print(f"Loaded image of dimensions {width}x{height} pixels ({width*height/1e6:.1f} MP). BG Median shifted to {TARGET_MEDIAN:.1f}. Read in {time.time() - t0:.2f} seconds.")
+    print(f"Loaded image of dimensions {width}x{height} pixels ({width*height/1e6:.1f} MP). Converted to float32 [0.0 - 1.0]. Read in {time.time() - t0:.2f} seconds.")
     
     # Calculate grid steps
     step = tile_size - 2 * overlap
