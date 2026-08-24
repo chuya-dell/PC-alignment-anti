@@ -162,6 +162,7 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
         summary_rows.append(row)
 
     df_summary = pd.DataFrame(summary_rows)
+    df_summary['サンプル系列'] = df_summary['ファイル名'].apply(lambda x: re.split(r'[_\-\.]', str(x))[0])
     df_bg_summary = pd.DataFrame(bg_stats_list)
 
     # 4つの科学的除外基準に基づくフィルタリング
