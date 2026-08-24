@@ -212,17 +212,29 @@ def prune_close_peaks(df_results, min_dist=4):
 def analyze_image(image_path, tile_size=2000, overlap=50, min_area=3, max_area=100, top_hat_size=15, method="blob", min_dist=5, threshold=None, invert=False):
     print(f"Loading image from {image_path}...")
     t0 = time.time()
-    # Read in grayscale (unicode path safe)
+    # Read preserving 16-bit depth (unicode path safe)
     try:
-        img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        # IMREAD_ANYDEPTH preserves 16-bit TIFFs instead of truncating to 8-bit
+        img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_ANYDEPTH)
     except Exception as e:
         img = None
     if img is None:
         raise ValueError(f"Could not load image: {image_path}")
-
+    
+    # 1. Global Flat-field Normalization (Median Scaling)
+    # Background is mostly dark, the most common values represent the uniform background illumination.
+    # Convert to float32 for precise mathematical operations before returning to uint16
+    img_float = img.astype(np.float32)
+    bg_median = np.median(img_float)
+    if bg_median > 0:
+        # Scale to an arbitrary standard median (e.g. 500 for 16-bit) to correct lamp fluctuations
+        TARGET_MEDIAN = 500.0
+        img_float = img_float * (TARGET_MEDIAN / bg_median)
+        
+    img = np.clip(img_float, 0, 65535).astype(np.uint16)
     
     height, width = img.shape
-    print(f"Loaded image of dimensions {width}x{height} pixels ({width*height/1e6:.1f} MP) in {time.time() - t0:.2f} seconds.")
+    print(f"Loaded image of dimensions {width}x{height} pixels ({width*height/1e6:.1f} MP). BG Median shifted to {TARGET_MEDIAN:.1f}. Read in {time.time() - t0:.2f} seconds.")
     
     # Calculate grid steps
     step = tile_size - 2 * overlap

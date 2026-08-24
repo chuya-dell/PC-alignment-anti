@@ -7,7 +7,8 @@ import os
 def load_image_unicode(path):
     """Unicode/Japanese path safe image read using numpy and cv2."""
     try:
-        return cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        # IMREAD_ANYDEPTH preserves 16-bit TIFF depth
+        return cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_ANYDEPTH).astype(np.float32)
     except Exception as e:
         print(f"Error loading image '{path}': {e}")
         return None
