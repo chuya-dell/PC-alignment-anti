@@ -142,37 +142,50 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
             'ファイル名': base_name,
             '分類': 'バックグラウンド' if is_bg else '測定データ',
             '評価パターン': filter_note,
-            '対象ピラー数 (母数=100%)': total_count,
-            '平均輝度': tgt_mean,
-            '輝度標準偏差': tgt_std,
+            '規格化母数 [総ピラー数 N_total]': total_count,
+            '平均輝度 (μ)': tgt_mean,
+            '輝度標準偏差 (σ)': tgt_std,
             'BG比輝度変化 (ΔMean)': delta_mean,
             'BG平均 (μ_BG)': bg_mean,
             'BG標準偏差 (σ_BG)': bg_std
         }
 
-        # 各 n*sigma の超える個数と割合を算出
+        # 各 n*sigma の超える個数と規格化割合(%)を算出・明確化
         for n in sigmas:
             thresh = thresholds[n]
             count_above = np.sum(vals > thresh)
             ratio_above = count_above / total_count
-            row[f'閾値 (μ+{n}σ)'] = thresh
-            row[f'> μ+{n}σ (個数)'] = count_above
-            row[f'> μ+{n}σ (%)'] = ratio_above
+            row[f'判定閾値 (μ+{n}σ)'] = thresh
+            row[f'{n}σ超過数 [個]'] = count_above
+            row[f'{n}σ超過規格化割合 [% = (超過数/N_total)*100]'] = ratio_above
 
         summary_rows.append(row)
 
     df_summary = pd.DataFrame(summary_rows)
     df_bg_summary = pd.DataFrame(bg_stats_list)
 
+    # 各サンプル系列番号（No.1, No.2 ...）ごとの規格化サマリーシートを作成
+    df_summary['サンプル系列'] = df_summary['ファイル名'].apply(lambda x: re.split(r'[_\-\.]', str(x))[0])
+    df_series_summary = df_summary.groupby(['サンプル系列', '評価パターン']).agg({
+        '規格化母数 [総ピラー数 N_total]': 'mean',
+        '平均輝度 (μ)': 'mean',
+        'BG比輝度変化 (ΔMean)': 'mean',
+        '3σ超過数 [個]': 'mean',
+        '3σ超過規格化割合 [% = (超過数/N_total)*100]': 'mean',
+        '5σ超過数 [個]': 'mean',
+        '5σ超過規格化割合 [% = (超過数/N_total)*100]': 'mean'
+    }).reset_index()
+
     # 3. Excel出力 (.xlsx)
     if output_excel_path is None:
-        output_excel_path = os.path.join(input_dir, "intensity_summary_by_sequence.xlsx")
+        output_excel_path = os.path.join(input_dir, "intensity_summary_3s_5s.xlsx")
 
     print(f"\nExcel ファイルに書き込み中: {output_excel_path}")
 
     with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
-        df_summary.to_excel(writer, sheet_name='連番別解析サマリー', index=False)
-        df_bg_summary.to_excel(writer, sheet_name='0番台バックグラウンド基準データ', index=False)
+        df_summary.drop(columns=['サンプル系列']).to_excel(writer, sheet_name='全データ規格化サマリー', index=False)
+        df_series_summary.to_excel(writer, sheet_name='サンプル系列別規格化平均', index=False)
+        df_bg_summary.to_excel(writer, sheet_name='背景(BG)基準データ', index=False)
 
     # 4. openpyxl によるデザイン装飾 (ヘッダー色付け、列幅調整、書式設定)
     try:
@@ -200,7 +213,7 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            ws.row_dimensions[1].height = 28
+            ws.row_dimensions[1].height = 32
 
             # Data rows style & format
             for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
@@ -211,13 +224,15 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
 
                     # Number formatting
                     if isinstance(cell.value, (int, float)):
-                        if "(%)" in col_header:
-                            cell.number_format = '0.00%'
+                        if "[%" in col_header or "割合" in col_header:
+                            cell.number_format = '0.000%'
                             cell.alignment = Alignment(horizontal="right", vertical="center")
-                        elif "(個数)" in col_header or "総データ数" in col_header:
+                        elif "[個]" in col_header or "N_total" in col_header or "母数" in col_header or "データ数" in col_header:
                             cell.number_format = '#,##0'
                             cell.alignment = Alignment(horizontal="right", vertical="center")
-                        elif any(k in col_header for k in ["平均", "標準偏差", "閾値", "ΔMean", "Mean", "Std"]):
+                        elif any(k in col_header for k in ["平均", "標準偏差", "閾値", "ΔMean", "μ", "σ"]):
+                            cell.number_format = '0.0000'
+                            cell.alignment = Alignment(horizontal="right", vertical="center")
                             cell.number_format = '#,##0.00'
                             cell.alignment = Alignment(horizontal="right", vertical="center")
                         else:
