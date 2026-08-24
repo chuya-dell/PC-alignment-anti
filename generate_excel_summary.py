@@ -164,9 +164,31 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
     df_summary = pd.DataFrame(summary_rows)
     df_bg_summary = pd.DataFrame(bg_stats_list)
 
-    # 各サンプル系列番号（No.1, No.2 ...）ごとの規格化サマリーシートを作成
+    # 失敗・異常データの除外マップ
+    EXCLUDE_MAP = {
+        '260706_sam_p200': ['8'],            # No.8: 1 pM (失敗・ゴミ)
+        '260707_sam_p100_1': ['8', '6'],     # No.8: 0 M(疑問), No.6: 10 fM (異常低下)
+        '260707_sam_p100_2': ['7']           # No.7: 1 fM (post測定時に剥離)
+    }
+
     df_summary['サンプル系列'] = df_summary['ファイル名'].apply(lambda x: re.split(r'[_\-\.]', str(x))[0])
+    
+    # 1. 全データ系列平均
     df_series_summary = df_summary.groupby(['サンプル系列', '評価パターン']).agg({
+        '規格化母数 [総ピラー数 N_total]': 'mean',
+        '平均輝度 (μ)': 'mean',
+        'BG比輝度変化 (ΔMean)': 'mean',
+        '3σ超過数 [個]': 'mean',
+        '3σ超過規格化割合 [% = (超過数/N_total)*100]': 'mean',
+        '5σ超過数 [個]': 'mean',
+        '5σ超過規格化割合 [% = (超過数/N_total)*100]': 'mean'
+    }).reset_index()
+
+    # 2. 異常値除外後のクリーン系列平均
+    dataset_name = os.path.basename(input_dir)
+    ex_list = EXCLUDE_MAP.get(dataset_name, [])
+    df_clean = df_summary[~df_summary['サンプル系列'].isin(ex_list)].copy()
+    df_clean_summary = df_clean.groupby(['サンプル系列', '評価パターン']).agg({
         '規格化母数 [総ピラー数 N_total]': 'mean',
         '平均輝度 (μ)': 'mean',
         'BG比輝度変化 (ΔMean)': 'mean',
@@ -184,7 +206,8 @@ def analyze_intensities_excel(input_dir, output_excel_path=None, intensity_col='
 
     with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
         df_summary.drop(columns=['サンプル系列']).to_excel(writer, sheet_name='全データ規格化サマリー', index=False)
-        df_series_summary.to_excel(writer, sheet_name='サンプル系列別規格化平均', index=False)
+        df_clean_summary.to_excel(writer, sheet_name='異常値除外クリーンサマリー', index=False)
+        df_series_summary.to_excel(writer, sheet_name='全系列別規格化平均', index=False)
         df_bg_summary.to_excel(writer, sheet_name='背景(BG)基準データ', index=False)
 
     # 4. openpyxl によるデザイン装飾 (ヘッダー色付け、列幅調整、書式設定)
