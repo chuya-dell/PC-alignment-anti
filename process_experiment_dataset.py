@@ -22,9 +22,16 @@ def is_bg_file_name(filename, bg_prefixes):
     return False
 
 def save_csv_safe(df, filepath):
-    os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, 'w', encoding='utf-8', newline='') as f:
-        df.to_csv(f, index=False)
+    filepath = os.path.abspath(filepath)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    temp_path = filepath + ".tmp"
+    try:
+        df.to_csv(temp_path, index=False)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        os.rename(temp_path, filepath)
+    except Exception:
+        df.to_csv(filepath, index=False)
 
 def process_full_experiment_folder(exp_dir, bg_prefixes, pitch=5.5):
     """
