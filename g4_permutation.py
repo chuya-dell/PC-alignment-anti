@@ -9,39 +9,37 @@ import matplotlib.pyplot as plt
 import argparse
 
 # Stage 3 script focusing purely on validation
-def run_g4_permutation_test(paired_csv_dir, conc_map, iterations=1000):
+def run_g4_permutation_test(summary_csv_path, conc_map, iterations=1000):
     print("==================================================")
     print(" STAGE 3: G-4 Label Permutation (Null Calibration)")
     print("==================================================")
     
-    # Load all paired CSVs
-    csv_files = glob.glob(os.path.join(paired_csv_dir, "*.csv"))
-    if not csv_files:
-        print("No paired CSV files found.")
+    if not os.path.exists(summary_csv_path):
+        print(f"Summary CSV not found: {summary_csv_path}")
         return
         
+    df = pd.read_csv(summary_csv_path)
+    
+    # Extract condition series from series_id (e.g., '10-1' -> '10')
+    # Actually, the user's notes say the series number (e.g., '10') maps to a concentration
+    # Let's map it based on the first part of the dash. '10-1' -> '10'
+    df['cond_id'] = df['series_id'].apply(lambda x: str(x).split('-')[0])
+    
     data = []
-    for f in csv_files:
-        basename = os.path.basename(f)
-        series = basename.split('_')[2].replace('.csv', '') # e.g. test_paired_10_1.csv -> 10-1 -> wait, name is 'test_paired_10-1.csv'
-        # More robust extraction assuming format like "paired_{series}.csv"
-        # Let's extract series safely
-        for k in conc_map.keys():
-            if k in basename:
-                series = k
-                break
-        else:
+    for cond_id, group in df.groupby('cond_id'):
+        if cond_id not in conc_map:
             continue
             
-        df = pd.read_csv(f)
-        median_delta = df['delta_I'].median()
-        trimmed_delta = scipy.stats.trim_mean(df['delta_I'], 0.1)
+        true_conc = conc_map[cond_id]
+        
+        # Aggregate the field-of-views for this condition (e.g., 10-1 through 10-8)
+        # We can take the mean of the trimmed_deltas across the FOVs
+        agg_trimmed = group['trimmed_delta'].mean()
         
         data.append({
-            'series': series,
-            'true_conc': conc_map[series],
-            'median_delta': median_delta,
-            'trimmed_delta': trimmed_delta
+            'cond_id': cond_id,
+            'true_conc': true_conc,
+            'trimmed_delta': agg_trimmed
         })
         
     df_agg = pd.DataFrame(data)
@@ -98,25 +96,30 @@ def run_g4_permutation_test(paired_csv_dir, conc_map, iterations=1000):
     plt.ylabel("Density")
     plt.legend()
     
-    out_png = os.path.join(paired_csv_dir, "G4_permutation_test.png")
+    # Save plot relative to summary CSV
+    out_dir = os.path.dirname(summary_csv_path)
+    out_png = os.path.join(out_dir, "G4_permutation_test.png")
     plt.savefig(out_png, dpi=300)
     print(f"\nSaved permutation plot to {out_png}")
 
 if __name__ == "__main__":
-    # Test dictionary mapping series to concentration
     test_map = {
-        '1-1': 1e-9,
-        '1-2': 1e-10,
-        '1-3': 1e-11,
-        '1-4': 1e-12,
-        '1-5': 1e-13,
-        '1-6': 1e-14,
-        '1-7': 1e-15,
-        '1-8': 0.0
+        '0': 0.0,
+        '1': 1e-9,
+        '2': 1e-10,
+        '3': 1e-11,
+        '4': 1e-12,
+        '5': 1e-13,
+        '8': 1e-14,
+        '10': 1e-15,
+        '11': 1e-11,
+        '12': 1e-12,
+        '13': 1e-14,
+        '14': 0.0
     }
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", type=str, required=True, help="Directory containing paired CSVs")
+    parser.add_argument("--summary-csv", type=str, required=True, help="Path to image_level_summary.csv")
     args = parser.parse_args()
     
-    run_g4_permutation_test(args.dir, test_map)
+    run_g4_permutation_test(args.summary_csv, test_map)
