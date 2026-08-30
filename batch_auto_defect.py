@@ -6,6 +6,18 @@ import matplotlib.pyplot as plt
 
 def process_image(pre_path, out_dir):
     try:
+        base_name = os.path.basename(pre_path)
+        dir_name = os.path.basename(os.path.dirname(pre_path))
+        if "Raw_Images" in dir_name:
+            dir_name = os.path.basename(os.path.dirname(os.path.dirname(pre_path)))
+            
+        date_prefix = dir_name.split('_')[0][:6] if '_' in dir_name else dir_name.split('-')[0][:6]
+        unique_name = f"{date_prefix}_{base_name.replace('-0.tif', '')}"
+        npy_path = os.path.join(out_dir, f"{unique_name}_mask.npy")
+        
+        if os.path.exists(npy_path):
+            return
+            
         img = cv2.imdecode(np.fromfile(pre_path, dtype=np.uint8), cv2.IMREAD_ANYDEPTH).astype(np.float32) / 65535.0
         h, w = img.shape
         
@@ -36,15 +48,6 @@ def process_image(pre_path, out_dir):
         
         combined_mask = np.maximum(dust_mask, stain_mask)
         
-        # Only save if something was detected (to save space and time) or if it's explicitly logged.
-        # We will save the boolean mask
-        base_name = os.path.basename(pre_path)
-        dir_name = os.path.basename(os.path.dirname(os.path.dirname(pre_path))) # e.g. 260824_p50_SHC6OH
-        date_prefix = dir_name.split('_')[0][:6] if '_' in dir_name else dir_name.split('-')[0][:6]
-        
-        unique_name = f"{date_prefix}_{base_name.replace('-0.tif', '')}"
-        
-        npy_path = os.path.join(out_dir, f"{unique_name}_mask.npy")
         np.save(npy_path, combined_mask)
         
         # Generate Preview
@@ -79,9 +82,18 @@ def process_image(pre_path, out_dir):
 
 if __name__ == "__main__":
     dirs = [
-        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260824_p50_SHC6OH",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260828-p50-SAM",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260828-p50-dna",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260827_pp50_dna",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260826-p50-sam",
         r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260825_p50_dna",
-        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260826-p50-sam"
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260824_p50_SHC6OH",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260822_p50_dna",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260707_sam_p100_2",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260707_sam_p100_1",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260706_sam_p200",
+        r"G:\マイドライブ\1.実験データ_gdrive\4.生データ\4.生データ D\260706_sam_p50",
+        r"C:\Users\chuya\.gemini\antigravity\scratch\11_SAM_260706_p200"
     ]
     
     out_dir = r"C:\Users\chuya\.gemini\antigravity\brain\60f5a68e-8281-4136-8936-9e4e95854572\auto_masks"

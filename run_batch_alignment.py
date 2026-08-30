@@ -24,11 +24,7 @@ def resolve_gdrive_path(path):
     # バックスラッシュをスラッシュに置換して処理しやすくする
     resolved = path.replace('\\', '/')
     
-    # G:/マイドライブ or G:/My Drive を F:/GoogleDrive_local に置換 (大文字小文字不問)
-    resolved = re.sub(r'^[Gg]:/マイドライブ', 'F:/GoogleDrive_local', resolved)
-    resolved = re.sub(r'^[Gg]:/My Drive', 'F:/GoogleDrive_local', resolved)
-    
-    return resolved
+    return path
 
 def group_files(input_dir):
     """
