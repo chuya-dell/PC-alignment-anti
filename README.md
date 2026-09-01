@@ -1,6 +1,9 @@
-# PC-alignment-anti (プラズモニック結晶 位置合わせ＆輝度変化解析)
+﻿# PC-alignment-anti (プラズモニック結晶 位置合わせ＆輝度変化解析)
 
 本プロジェクトは、**プラズモニック結晶（ナノピラー構造）顕微鏡画像**について、自己組織化単分子膜（SAM）固定化前（`pre` / Sequence 0）と固定化後（`post` / Sequence 1）の位置合わせ（アライメント）を行い、SAM固定化に伴う**局所的な輝度変化量（post - pre）の二次元分布**を精密に解析・可視化するためのシステムです。
+
+> 📄 **開発経緯・極限精度結果・ピラー検出調整のまとめ**:
+> 詳細な経緯と結果は [ALIGNMENT_AND_DETECTION_HISTORY.md](ALIGNMENT_AND_DETECTION_HISTORY.md) をご覧ください。
 
 ユーザーは、他のチャットセッションや別のAIにこのリポジトリのURL（ `https://github.com/chuya-dell/PC-alignment-anti.git` ）を提示するだけで、同様の解析処理を完全に再現・引き継ぎさせることができます。
 
@@ -10,6 +13,7 @@
 
 | ファイル名 | 役割・説明 |
 | :--- | :--- |
+| **`ALIGNMENT_AND_DETECTION_HISTORY.md`** | **【開発経緯・結果】** 2段階ICP(2次多項式変形)極限アライメントの到達精度と課題・経緯まとめ。 |
 | **`analyzer.py`** | 顕微鏡画像からナノピラーの重心座標と輝度（3x3平均値）を高速検出するコアスクリプト。 |
 | **`registration.py`** | ランドマークによる粗位置合わせと、2段階ICP（2次多項式変形）によるサブピクセル精密位置合わせ。 |
 | **`run_batch_alignment.py`** | 全64ペア（8条件×8セット）に対してピラー座標検出と位置合わせをバッチ処理する。 |
@@ -89,7 +93,7 @@
 > 解析プログラムと仕様は以下のGitHubリポジトリに公開されています：
 > `https://github.com/chuya-dell/PC-alignment-anti.git`
 > 
-> リポジトリ内の `README.md` を読み込み、
+> リポジトリ内の `README.md` および `ALIGNMENT_AND_DETECTION_HISTORY.md` を読み込み、
 > 1. ピラー認識解析用のスクリプト（`run_batch_alignment.py`、`run_intensity_comparison.py`、`export_intensity_excel.py`）
 > 2. グリッド差分解析用のスクリプト（`run_grid_difference_analysis.py`、`export_grid_intensity_excel.py`）
 > の仕組みと動作手順を把握してください。

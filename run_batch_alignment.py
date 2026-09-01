@@ -1,10 +1,17 @@
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import sys
 import re
 import argparse
 import pandas as pd
 import numpy as np
 import cv2
+cv2.setNumThreads(1)
 from tqdm import tqdm
 import time
 
@@ -14,17 +21,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from analyzer import analyze_image
 from registration import align_and_match_dataframes
 
-def resolve_gdrive_path(path):
-    """
-    Windows環境でGドライブのマウントパスをFドライブに置換して解決する。
-    """
-    if path is None:
-        return None
-    
-    # バックスラッシュをスラッシュに置換して処理しやすくする
-    resolved = path.replace('\\', '/')
-    
-    return path
+from path_resolver import resolve_gdrive_path
 
 def group_files(input_dir):
     """
@@ -115,6 +112,127 @@ def main():
     args = parser.parse_args()
 
     # パスの自動解決
+def process_pair_task(task_args):
+    pair = task_args['pair']
+    output_dir = task_args['output_dir']
+    method = task_args['method']
+    min_dist = task_args['min_dist']
+    threshold = task_args['threshold']
+    invert = task_args['invert']
+    no_auto_invert = task_args['no_auto_invert']
+
+    pair_name = pair['name']
+    pre_img_path = pair['pre_path']
+    post_img_path = pair['post_path']
+
+    inv = invert
+    if not no_auto_invert:
+        inv = auto_detect_invert(pre_img_path)
+
+    record = {
+        'pair_name': pair_name,
+        'pre_pillars': 0,
+        'post_pillars': 0,
+        'matched_pillars': 0,
+        'match_rate': 0.0,
+        'coarse_dx': 0.0,
+        'coarse_dy': 0.0,
+        'icp_iterations': 0,
+        'icp_converged': False,
+        'icp_rmse': 0.0,
+        'status': 'FAILED',
+        'error_message': ''
+    }
+
+    try:
+        df_pre = analyze_image(
+            image_path=pre_img_path,
+            method=method,
+            min_area=3,
+            max_area=100,
+            top_hat_size=15,
+            min_dist=min_dist,
+            threshold=threshold,
+            invert=inv
+        )
+        df_post = analyze_image(
+            image_path=post_img_path,
+            method=method,
+            min_area=3,
+            max_area=100,
+            top_hat_size=15,
+            min_dist=min_dist,
+            threshold=threshold,
+            invert=inv
+        )
+
+        record['pre_pillars'] = len(df_pre)
+        record['post_pillars'] = len(df_post)
+
+        pre_csv_out = os.path.join(output_dir, f"{pair_name}_pillars_pre.csv")
+        post_csv_out = os.path.join(output_dir, f"{pair_name}_pillars_post.csv")
+        
+        df_pre.to_csv(pre_csv_out, index=False)
+        df_post.to_csv(post_csv_out, index=False)
+
+        if len(df_pre) < 10 or len(df_post) < 10:
+            raise ValueError(f"Too few pillars detected (pre: {len(df_pre)}, post: {len(df_post)}). Cannot align.")
+
+        df_aligned, H_final, iter_count, converged, dx_coarse, dy_coarse = align_and_match_dataframes(
+            df_ref=df_pre,
+            df_tgt=df_post,
+            ref_img_path=pre_img_path,
+            tgt_img_path=post_img_path,
+            return_diagnostics=True
+        )
+
+        aligned_csv_out = os.path.join(output_dir, f"{pair_name}_aligned_to_pre.csv")
+        df_aligned.to_csv(aligned_csv_out, index=False)
+
+        dists = df_aligned['alignment_distance'].values
+        matched_mask = df_aligned['matched_ref_id'] != -1
+        matched_dists = dists[matched_mask]
+        
+        num_matched = len(matched_dists)
+        match_rate = (num_matched / len(df_post)) * 100.0 if len(df_post) > 0 else 0.0
+        rmse = np.sqrt(np.mean(matched_dists**2)) if num_matched > 0 else 0.0
+
+        record['matched_pillars'] = num_matched
+        record['match_rate'] = match_rate
+        record['coarse_dx'] = dx_coarse
+        record['coarse_dy'] = dy_coarse
+        record['icp_iterations'] = iter_count
+        record['icp_converged'] = converged
+        record['icp_rmse'] = rmse
+        
+        if match_rate < 70.0:
+            record['status'] = 'WARNING'
+            record['error_message'] = f'Low match rate: {match_rate:.2f}%'
+        else:
+            record['status'] = 'SUCCESS'
+
+    except Exception as e:
+        record['status'] = 'FAILED'
+        record['error_message'] = str(e)
+
+    return record
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+def main():
+    parser = argparse.ArgumentParser(description="Pillar Alignment Batch Execution Pipeline")
+    parser.add_argument("--input-dir", required=True, help="Input directory containing image dataset")
+    parser.add_argument("--output-dir", required=True, help="Output directory for results")
+    parser.add_argument("--method", default="peak", choices=["blob", "peak"], help="Pillar detection method: 'peak' or 'blob'")
+    parser.add_argument("--min-dist", type=int, default=5, help="Minimum distance between peaks")
+    parser.add_argument("--threshold", type=float, default=None, help="Absolute detection threshold")
+    parser.add_argument("--invert", action="store_true", help="Manually force invert contrast during pillar detection")
+    parser.add_argument("--no-auto-invert", action="store_true", help="Disable automatic contrast invert detection")
+    parser.add_argument("--limit", type=int, default=None, help="Limit the number of pairs to process")
+    parser.add_argument("--workers", type=int, default=None, help="Number of parallel CPU worker processes")
+    
+    args = parser.parse_args()
+
     input_dir = resolve_gdrive_path(args.input_dir)
     output_dir = resolve_gdrive_path(args.output_dir)
 
@@ -126,12 +244,10 @@ def main():
         print("No valid file pairs found.")
         return
 
-    # 有効なペア（pre/post両方が揃っているもの）を抽出
     valid_pairs = []
     for (cond, set_num), paths in groups.items():
         pair_name = f"{cond}-{set_num}"
         if paths['pre'] is None or paths['post'] is None:
-            print(f"Warning: Incomplete pair for {pair_name}. pre: {paths['pre']}, post: {paths['post']}. Skipped.")
             continue
             
         valid_pairs.append({
@@ -142,7 +258,6 @@ def main():
             'post_path': paths['post']
         })
 
-    # 自然な数値順ソート（例: 1-1, 1-2, ..., 2-1...）
     try:
         valid_pairs.sort(key=lambda x: (int(x['cond']), int(x['set'])))
     except ValueError:
@@ -152,135 +267,36 @@ def main():
         print(f"Limiting execution to the first {args.limit} pairs.")
         valid_pairs = valid_pairs[:args.limit]
 
+    workers = args.workers if args.workers else max(1, os.cpu_count() - 2)
     print(f"Total pairs to process: {len(valid_pairs)}")
+    print(f"Executing batch alignment in parallel using {workers} CPU workers...")
     os.makedirs(output_dir, exist_ok=True)
 
+    task_list = [{
+        'pair': pair,
+        'output_dir': output_dir,
+        'method': args.method,
+        'min_dist': args.min_dist,
+        'threshold': args.threshold,
+        'invert': args.invert,
+        'no_auto_invert': args.no_auto_invert
+    } for pair in valid_pairs]
+
     summary_records = []
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(process_pair_task, task) for task in task_list]
+        for future in tqdm(as_completed(futures), total=len(futures), desc=f"Parallel Alignment ({workers} CPU Cores)"):
+            try:
+                rec = future.result()
+                summary_records.append(rec)
+            except Exception as e:
+                print(f"Error processing pair task: {e}")
 
-    # バッチ処理ループ
-    for pair in tqdm(valid_pairs, desc="Processing Alignment Batch"):
-        pair_name = pair['name']
-        pre_img_path = pair['pre_path']
-        post_img_path = pair['post_path']
+    try:
+        summary_records.sort(key=lambda x: (int(x['pair_name'].split('-')[0]), int(x['pair_name'].split('-')[1])))
+    except Exception:
+        summary_records.sort(key=lambda x: x['pair_name'])
 
-        print(f"\n" + "="*60)
-        print(f" Processing Pair: {pair_name}")
-        print(f"   pre : {os.path.basename(pre_img_path)}")
-        print(f"   post: {os.path.basename(post_img_path)}")
-        print(f""+"="*60)
-
-        # コントラスト反転の判定
-        invert = args.invert
-        if not args.no_auto_invert:
-            # pre画像を基準に自動判定
-            invert = auto_detect_invert(pre_img_path)
-            print(f"   Auto-invert detection: {invert} (based on average intensity)")
-
-        record = {
-            'pair_name': pair_name,
-            'pre_pillars': 0,
-            'post_pillars': 0,
-            'matched_pillars': 0,
-            'match_rate': 0.0,
-            'coarse_dx': 0.0,
-            'coarse_dy': 0.0,
-            'icp_iterations': 0,
-            'icp_converged': False,
-            'icp_rmse': 0.0,
-            'status': 'FAILED',
-            'error_message': ''
-        }
-
-        try:
-            # 1. ピラー座標検出 (pre)
-            print(f"   Detecting pillars in pre image...")
-            df_pre = analyze_image(
-                image_path=pre_img_path,
-                method=args.method,
-                min_area=3,
-                max_area=100,
-                top_hat_size=15,
-                min_dist=args.min_dist,
-                threshold=args.threshold,
-                invert=invert
-            )
-            
-            # 2. ピラー座標検出 (post)
-            print(f"   Detecting pillars in post image...")
-            df_post = analyze_image(
-                image_path=post_img_path,
-                method=args.method,
-                min_area=3,
-                max_area=100,
-                top_hat_size=15,
-                min_dist=args.min_dist,
-                threshold=args.threshold,
-                invert=invert
-            )
-
-            record['pre_pillars'] = len(df_pre)
-            record['post_pillars'] = len(df_post)
-
-            # 検出結果の保存
-            pre_csv_out = os.path.join(output_dir, f"{pair_name}_pillars_pre.csv")
-            post_csv_out = os.path.join(output_dir, f"{pair_name}_pillars_post.csv")
-            
-            df_pre.to_csv(pre_csv_out, index=False)
-            df_post.to_csv(post_csv_out, index=False)
-
-            if len(df_pre) < 10 or len(df_post) < 10:
-                raise ValueError(f"Too few pillars detected (pre: {len(df_pre)}, post: {len(df_post)}). Cannot align.")
-
-            # 3. 2段階アライメントの実行 (ICPから詳細データを取得)
-            print(f"   Running registration pipeline...")
-            df_aligned, H_final, iter_count, converged, dx_coarse, dy_coarse = align_and_match_dataframes(
-                df_ref=df_pre,
-                df_tgt=df_post,
-                ref_img_path=pre_img_path,
-                tgt_img_path=post_img_path,
-                return_diagnostics=True
-            )
-
-            # アライメント済み座標の保存
-            aligned_csv_out = os.path.join(output_dir, f"{pair_name}_aligned_to_pre.csv")
-            df_aligned.to_csv(aligned_csv_out, index=False)
-
-            # 4. アライメント品質の評価
-            dists = df_aligned['alignment_distance'].values
-            matched_mask = df_aligned['matched_ref_id'] != -1
-            matched_dists = dists[matched_mask]
-            
-            num_matched = len(matched_dists)
-            match_rate = (num_matched / len(df_post)) * 100.0 if len(df_post) > 0 else 0.0
-            rmse = np.sqrt(np.mean(matched_dists**2)) if num_matched > 0 else 0.0
-
-            record['matched_pillars'] = num_matched
-            record['match_rate'] = match_rate
-            record['coarse_dx'] = dx_coarse
-            record['coarse_dy'] = dy_coarse
-            record['icp_iterations'] = iter_count
-            record['icp_converged'] = converged
-            record['icp_rmse'] = rmse
-            
-            # マッチ率によるステータスの判定
-            if match_rate < 70.0:
-                record['status'] = 'WARNING'
-                record['error_message'] = f'Low match rate: {match_rate:.2f}%'
-                print(f"   [WARNING] Low alignment precision. Match rate: {match_rate:.2f}%")
-            else:
-                record['status'] = 'SUCCESS'
-                print(f"   [SUCCESS] Match rate: {match_rate:.2f}%, RMSE: {rmse:.4f} px (ICP iterations: {iter_count})")
-
-        except Exception as e:
-            # 傷検出エラー等が発生しても、全体を止めずに次へ
-            err_msg = str(e)
-            record['status'] = 'FAILED'
-            record['error_message'] = err_msg
-            print(f"   [FAILED] Alignment failed: {err_msg}")
-
-        summary_records.append(record)
-
-    # summary.csv の書き出し
     summary_df = pd.DataFrame(summary_records)
     summary_csv_path = os.path.join(output_dir, "summary.csv")
     summary_df.to_csv(summary_csv_path, index=False)

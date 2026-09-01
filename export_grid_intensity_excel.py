@@ -5,17 +5,17 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 import argparse
 
+from path_resolver import resolve_gdrive_path
+
 def main():
     parser = argparse.ArgumentParser(description="Grid Intensity Excel Aggregator")
-    parser.add_argument("data_dir", nargs="?", 
-                        default="F:/GoogleDrive_local/1.実験データ_gdrive/5.生データ D/260704 sam 位置合わせ test/foranti/grid_analysis", 
-                        help="Path to the directory containing grid_analysis CSV files")
+    parser.add_argument("data_dir", help="Path to the directory containing grid_analysis CSV files")
     parser.add_argument("--output-local", action="store_true", 
                         help="Also output to local git repository as ./grid_intensity_analysis.xlsx")
     args = parser.parse_args()
     
     # バックスラッシュをスラッシュに置換して統一
-    data_dir = args.data_dir.replace('\\', '/')
+    data_dir = resolve_gdrive_path(args.data_dir)
     output_xlsx = os.path.join(data_dir, "grid_intensity_analysis.xlsx").replace('\\', '/')
     
     print("Starting Grid Intensity Excel Aggregation...")

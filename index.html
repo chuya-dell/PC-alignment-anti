@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AURA Digital Detection - PC Alignment & Anti-Aliasing Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="url(#paint0_linear)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 17L12 22L22 17" stroke="url(#paint1_linear)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="url(#paint2_linear)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="paint0_linear" x1="2" y1="2" x2="22" y2="12" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#38BDF8"/>
+                <stop offset="1" stop-color="#818CF8"/>
+              </linearGradient>
+              <linearGradient id="paint1_linear" x1="2" y1="17" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#818CF8"/>
+                <stop offset="1" stop-color="#C084FC"/>
+              </linearGradient>
+              <linearGradient id="paint2_linear" x1="2" y1="12" x2="22" y2="17" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#38BDF8"/>
+                <stop offset="1" stop-color="#C084FC"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <h1>AURA <span>Digital Detection</span></h1>
+          <span class="badge">pc-alignment-anti v2.4</span>
+        </div>
+      </div>
+
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="status-dot green"></span>
+          <span>Phase Correlation Engine: Ready</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot blue"></span>
+          <span>Anti-Aliasing: Active (Sub-pixel)</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot purple"></span>
+          <span id="fpsCounter">60 FPS</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="main-layout">
+      <!-- Sidebar Controls -->
+      <aside class="sidebar">
+        <!-- Input & Pattern Panel -->
+        <section class="panel">
+          <h3 class="panel-title">
+            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            1. 検出パターン & 入力
+          </h3>
+          <div class="control-group">
+            <label for="patternSelect">サンプルパターン選択</label>
+            <select id="patternSelect" class="styled-select">
+              <option value="pcb">プリント基板配線 (PCB Circuit)</option>
+              <option value="grid">光学アライメントグリッド (Optical Grid)</option>
+              <option value="dots">高密度点群アライメント (Point Cloud)</option>
+              <option value="semiconductor">半導体ウェハパターン (Wafer Die)</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label>カスタム画像読み込み</label>
+            <div class="file-dropzone" id="dropzone">
+              <input type="file" id="fileInput" accept="image/*" class="file-input">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+              <span>ドラッグ＆ドロップ または 参照</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Alignment Engine Panel -->
+        <section class="panel">
+          <h3 class="panel-title">
+            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16m8-8H4m12 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            2. アライメント（位置合わせ）制御
+          </h3>
+          <div class="control-group">
+            <label for="algorithmSelect">アライメント・アルゴリズム</label>
+            <select id="algorithmSelect" class="styled-select">
+              <option value="phase_correlation">Phase Correlation (位相相関法)</option>
+              <option value="pca_pointcloud">PCA Point Cloud Alignment (主成分点群法)</option>
+              <option value="feature_matching">Feature Intensity Search (特徴量探索)</option>
+            </select>
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="shiftXSlider">意図的オフセット X (&Delta;x)</label>
+              <span id="shiftXVal" class="val-badge">0.0 px</span>
+            </div>
+            <input type="range" id="shiftXSlider" min="-30" max="30" step="0.5" value="12.5">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="shiftYSlider">意図的オフセット Y (&Delta;y)</label>
+              <span id="shiftYVal" class="val-badge">0.0 px</span>
+            </div>
+            <input type="range" id="shiftYSlider" min="-30" max="30" step="0.5" value="-8.0">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="rotationSlider">回転角度 (&Delta;&theta;)</label>
+              <span id="rotationVal" class="val-badge">0.0&deg;</span>
+            </div>
+            <input type="range" id="rotationSlider" min="-180" max="180" step="0.5" value="3.5">
+          </div>
+
+          <button id="btnAutoAlign" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            自動アライメント計算実行
+          </button>
+        </section>
+
+        <!-- Anti-Aliasing & Noise Filter Panel -->
+        <section class="panel">
+          <h3 class="panel-title">
+            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            3. アンチエイリアス・ノイズ対策
+          </h3>
+          
+          <div class="checkbox-group">
+            <input type="checkbox" id="chkAntiAliasing" checked>
+            <label for="chkAntiAliasing">サブピクセル・アンチエイリアシング有効</label>
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="blurRadiusSlider">アンチエイリアス平滑化半径</label>
+              <span id="blurRadiusVal" class="val-badge">1.2 px</span>
+            </div>
+            <input type="range" id="blurRadiusSlider" min="0" max="5" step="0.1" value="1.2">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="noiseLevelSlider">合成画像ノイズ付加</label>
+              <span id="noiseLevelVal" class="val-badge">0 %</span>
+            </div>
+            <input type="range" id="noiseLevelSlider" min="0" max="25" step="1" value="5">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="diffThresholdSlider">欠陥検出感度 (差分閾値)</label>
+              <span id="diffThresholdVal" class="val-badge">15</span>
+            </div>
+            <input type="range" id="diffThresholdSlider" min="1" max="100" step="1" value="15">
+          </div>
+        </section>
+
+        <!-- View Mode Panel -->
+        <section class="panel">
+          <h3 class="panel-title">
+            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            4. 表現モード切替
+          </h3>
+          <div class="view-mode-buttons">
+            <button class="btn-mode active" data-mode="overlay">重畳 (Overlay)</button>
+            <button class="btn-mode" data-mode="diff">差分ヒートマップ</button>
+            <button class="btn-mode" data-mode="subpixel">サブピクセルエッジ</button>
+            <button class="btn-mode" data-mode="split">分割画面 (Split)</button>
+          </div>
+        </section>
+      </aside>
+
+      <!-- Main Display & Analytics Container -->
+      <main class="content-area">
+        <!-- Display Viewports Grid -->
+        <div class="viewports-grid">
+          <!-- Viewport 1: Reference -->
+          <div class="viewport-card">
+            <div class="card-header">
+              <span class="card-title">基準画像 (Reference Grid)</span>
+              <span class="badge blue">Ref Target</span>
+            </div>
+            <div class="canvas-wrapper">
+              <canvas id="canvasRef" width="480" height="480"></canvas>
+            </div>
+          </div>
+
+          <!-- Viewport 2: Target / Shifted -->
+          <div class="viewport-card">
+            <div class="card-header">
+              <span class="card-title">検出対象 (Target Image w/ Offset)</span>
+              <span class="badge amber">Target Input</span>
+            </div>
+            <div class="canvas-wrapper">
+              <canvas id="canvasTarget" width="480" height="480"></canvas>
+            </div>
+          </div>
+
+          <!-- Viewport 3: Aligned Result -->
+          <div class="viewport-card">
+            <div class="card-header">
+              <span class="card-title">アライメント結果 (Aligned & Corrected)</span>
+              <span class="badge green" id="alignedBadge">PC Corrected</span>
+            </div>
+            <div class="canvas-wrapper">
+              <canvas id="canvasAligned" width="480" height="480"></canvas>
+            </div>
+          </div>
+
+          <!-- Viewport 4: Difference / Heatmap -->
+          <div class="viewport-card">
+            <div class="card-header">
+              <span class="card-title">差分・欠陥検出 (Difference Heatmap)</span>
+              <span class="badge purple">Anti-Aliased Diff</span>
+            </div>
+            <div class="canvas-wrapper">
+              <canvas id="canvasDiff" width="480" height="480"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics Dashboard -->
+        <section class="metrics-section">
+          <div class="metric-card">
+            <div class="metric-label">検出位置ズレ &Delta;X</div>
+            <div class="metric-value" id="metricDeltaX">0.00 <span class="unit">px</span></div>
+            <div class="metric-sub" id="subDeltaX">Target: +12.50 px</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">検出位置ズレ &Delta;Y</div>
+            <div class="metric-value" id="metricDeltaY">0.00 <span class="unit">px</span></div>
+            <div class="metric-sub" id="subDeltaY">Target: -8.00 px</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">検出回転角度 &Delta;&theta;</div>
+            <div class="metric-value" id="metricDeltaTheta">0.00<span class="unit">&deg;</span></div>
+            <div class="metric-sub" id="subDeltaTheta">Target: +3.50&deg;</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">構造類似度 (SSIM)</div>
+            <div class="metric-value highlight" id="metricSSIM">0.998</div>
+            <div class="metric-progress">
+              <div class="progress-bar" id="barSSIM" style="width: 99.8%;"></div>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">平均二乗誤差 (MSE)</div>
+            <div class="metric-value" id="metricMSE">0.12</div>
+            <div class="metric-sub">PSNR: <span id="metricPSNR">37.4 dB</span></div>
+          </div>
+        </section>
+
+        <!-- Dynamic Profile Graph & Analysis -->
+        <section class="analysis-panel">
+          <div class="analysis-header">
+            <h3>エッジプロファイル & サブピクセル輝度解析</h3>
+            <div class="legend">
+              <span class="legend-item"><span class="dot ref"></span> Reference Profile</span>
+              <span class="legend-item"><span class="dot target"></span> Target Profile</span>
+              <span class="legend-item"><span class="dot aligned"></span> Anti-Aliased Aligned</span>
+            </div>
+          </div>
+          <div class="graph-wrapper">
+            <canvas id="graphCanvas" width="980" height="160"></canvas>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

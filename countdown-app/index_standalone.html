@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【警告】現実直視カウントダウンシステム</title>
+    <meta name="description" content="2026年8月19日 院試開始に向けた現実突きつけカウントダウン。ライバルは今も勉強しています。">
+    <!-- Google Fonts for Cyberpunk typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Noto+Sans+JP:wght@400;700;900&family=Rajdhani:wght@600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        /* Base Reset & Variables */
+        :root {
+            --bg-primary: #070707;
+            --bg-card: #121212;
+            --bg-card-header: #1a1a1a;
+            --color-danger: #FF0033;
+            --color-warning: #FFE600;
+            --color-text-primary: #E5E5E5;
+            --color-text-secondary: #8E8E93;
+            --color-border: #2C2C2E;
+            
+            --shadow-danger-glow: 0 0 10px rgba(255, 0, 51, 0.4), 0 0 20px rgba(255, 0, 51, 0.2);
+            --shadow-warning-glow: 0 0 10px rgba(255, 230, 0, 0.4), 0 0 20px rgba(255, 230, 0, 0.2);
+            --glow-text-danger: 0 0 5px rgba(255, 0, 51, 0.8), 0 0 15px rgba(255, 0, 51, 0.5);
+            --glow-text-warning: 0 0 5px rgba(255, 230, 0, 0.8), 0 0 15px rgba(255, 230, 0, 0.5);
+
+            --font-digit: 'Share Tech Mono', monospace;
+            --font-title: 'Dela Gothic One', sans-serif;
+            --font-cyber: 'Rajdhani', sans-serif;
+            --font-base: 'Noto Sans JP', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body.cyber-theme {
+            background-color: var(--bg-primary);
+            color: var(--color-text-primary);
+            font-family: var(--font-base);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* CRT Scanline Overlay Effect */
+        .crt-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+
+        .crt-overlay::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: radial-gradient(circle, rgba(18,16,16,0) 0%, rgba(0,0,0,0.6) 100%);
+            pointer-events: none;
+        }
+
+        /* Ambient Screen Flicker */
+        @keyframes screen-flicker {
+            0% { opacity: 0.98; }
+            50% { opacity: 1; }
+            100% { opacity: 0.99; }
+        }
+
+        .glitch-ambient {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 0, 51, 0.015);
+            z-index: 9998;
+            pointer-events: none;
+            animation: screen-flicker 0.15s infinite;
+        }
+
+        /* Header Warning Bar (Marquee Ticker) */
+        .warning-ticker-bar {
+            background-color: var(--color-danger);
+            color: #FFFFFF;
+            font-family: var(--font-cyber);
+            font-weight: 700;
+            font-size: 0.85rem;
+            letter-spacing: 0.1em;
+            padding: 0.5rem 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(255, 0, 51, 0.5);
+            text-transform: uppercase;
+        }
+
+        .ticker-wrap {
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .ticker {
+            display: inline-block;
+            white-space: nowrap;
+            animation: marquee 25s linear infinite;
+            padding-left: 100%;
+        }
+
+        .warning-tag {
+            background-color: #000;
+            color: var(--color-warning);
+            padding: 0.1rem 0.4rem;
+            margin-right: 0.5rem;
+            font-size: 0.75rem;
+            border-radius: 2px;
+        }
+
+        @keyframes marquee {
+            0% { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(-100%, 0, 0); }
+        }
+
+        /* App Main Container */
+        .app-container {
+            max-width: 800px;
+            width: 100%;
+            margin: 6rem auto 2rem auto;
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2.5rem;
+            flex-grow: 1;
+        }
+
+        /* System Title Block */
+        .system-title-section {
+            text-align: center;
+            border-bottom: 2px solid var(--color-danger);
+            padding-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .system-status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255, 0, 51, 0.1);
+            border: 1px solid var(--color-danger);
+            padding: 0.3rem 0.8rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            font-family: var(--font-cyber);
+            font-size: 0.75rem;
+            letter-spacing: 0.15em;
+            color: var(--color-danger);
+            box-shadow: var(--shadow-danger-glow);
+        }
+
+        .blink-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--color-danger);
+            border-radius: 50%;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.3; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1.2); }
+        }
+
+        .main-title {
+            font-family: var(--font-title);
+            font-size: 2rem;
+            color: #FFFFFF;
+            letter-spacing: 0.05em;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .target-date-label {
+            font-family: var(--font-cyber);
+            font-size: 1.1rem;
+            color: var(--color-text-secondary);
+            letter-spacing: 0.1em;
+        }
+
+        .highlight-yellow {
+            color: var(--color-warning);
+            font-weight: 700;
+            text-shadow: var(--glow-text-warning);
+        }
+
+        /* Card Component (Sci-Fi Border Style) */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--color-border);
+            border-left: 4px solid var(--color-border);
+            border-radius: 4px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--color-danger);
+            box-shadow: 0 8px 24px rgba(255, 0, 51, 0.15);
+        }
+
+        .card-header {
+            background-color: var(--bg-card-header);
+            border-bottom: 1px solid var(--color-border);
+            padding: 0.5rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h2 {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .card-id {
+            font-family: var(--font-cyber);
+            font-size: 0.7rem;
+            color: var(--color-text-secondary);
+            background: rgba(255, 255, 255, 0.03);
+            padding: 0.1rem 0.4rem;
+            border-radius: 2px;
+        }
+
+        /* Countdown Card Specifics */
+        .countdown-card {
+            border-left-color: var(--color-danger);
+        }
+
+        .timer-display {
+            padding: 2.5rem 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1.5rem;
+            background: radial-gradient(circle at center, #1b0c0f 0%, #121212 100%);
+        }
+
+        .time-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 100px;
+        }
+
+        .time-num {
+            font-family: var(--font-digit);
+            font-size: 4.5rem;
+            font-weight: 700;
+            color: var(--color-danger);
+            text-shadow: var(--glow-text-danger);
+            line-height: 1;
+        }
+
+        .time-unit {
+            font-family: var(--font-cyber);
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--color-text-secondary);
+            margin-top: 0.5rem;
+            letter-spacing: 0.2em;
+        }
+
+        .time-separator {
+            font-family: var(--font-digit);
+            font-size: 4rem;
+            color: var(--color-danger);
+            opacity: 0.8;
+            text-shadow: var(--glow-text-danger);
+            margin-top: -1.2rem;
+            animation: blink-separator 1s infinite steps(2);
+        }
+
+        @keyframes blink-separator {
+            0% { opacity: 0.1; }
+            50% { opacity: 0.9; }
+        }
+
+        /* Threat Message Card Specifics */
+        .message-card {
+            border-left-color: var(--color-warning);
+        }
+
+        .message-card:hover {
+            border-color: var(--color-warning);
+            box-shadow: 0 8px 24px rgba(255, 230, 0, 0.15);
+        }
+
+        .message-content {
+            padding: 2rem;
+            text-align: center;
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f1008;
+        }
+
+        .threat-text {
+            font-family: var(--font-base);
+            font-size: 1.35rem;
+            font-weight: 900;
+            color: var(--color-warning);
+            text-shadow: var(--glow-text-warning);
+            letter-spacing: 0.05em;
+            line-height: 1.6;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Responsive Scaling */
+        @media (max-width: 900px) {
+            .timer-display {
+                gap: 0.8rem;
+                padding: 2rem 0.5rem;
+            }
+            
+            .time-block {
+                min-width: 70px;
+            }
+            
+            .time-num {
+                font-size: 3rem;
+            }
+            
+            .time-separator {
+                font-size: 2.5rem;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .main-title {
+                font-size: 1.4rem;
+            }
+            
+            .timer-display {
+                gap: 0.4rem;
+                flex-wrap: wrap;
+            }
+            
+            .time-block {
+                min-width: 60px;
+            }
+            
+            .time-num {
+                font-size: 2.2rem;
+            }
+            
+            .time-separator {
+                font-size: 1.8rem;
+                display: none; /* Hide colons on narrow screens */
+            }
+            
+            .threat-text {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+<body class="cyber-theme">
+    <!-- CRT scanlines and flicker overlay for cyberpunk vibe -->
+    <div class="crt-overlay" aria-hidden="true"></div>
+    <div class="glitch-ambient" aria-hidden="true"></div>
+
+    <!-- Header Warning Bar -->
+    <header class="warning-ticker-bar" id="warning-header">
+        <div class="ticker-wrap">
+            <div class="ticker">
+                <span class="warning-tag">[CRITICAL WARNING]</span> あなたの志望校の合格枠は増えません。他人がサボることを期待するな。&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span class="warning-tag">[SYSTEM STATUS: DANGER]</span> 刻一刻とライバルとの差が開いています。&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span class="warning-tag">[CRITICAL WARNING]</span> あなたの志望校の合格枠は増えません。他人がサボることを期待するな。&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span class="warning-tag">[SYSTEM STATUS: DANGER]</span> 刻一刻とライバルとの差が開いています。&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            </div>
+        </div>
+    </header>
+
+    <!-- Main App Container -->
+    <main class="app-container">
+        <!-- System Title Block -->
+        <section class="system-title-section">
+            <div class="system-status-indicator">
+                <span class="blink-dot"></span>
+                <span class="status-text">MONITORING YOUR APATHY</span>
+            </div>
+            <h1 class="main-title">院試開始時刻 ターゲットカウントダウン</h1>
+            <p class="target-date-label">TARGET JST: <span class="highlight-yellow">2026.08.19 09:00:00</span></p>
+        </section>
+
+        <!-- Countdown Timer Card -->
+        <section class="card countdown-card">
+            <div class="card-header">
+                <span class="card-id">SYS.CD_0819</span>
+                <h2>残された時間</h2>
+            </div>
+            <div class="timer-display">
+                <div class="time-block">
+                    <span class="time-num" id="timer-days">--</span>
+                    <span class="time-unit">DAYS</span>
+                </div>
+                <div class="time-separator">:</div>
+                <div class="time-block">
+                    <span class="time-num" id="timer-hours">--</span>
+                    <span class="time-unit">HOURS</span>
+                </div>
+                <div class="time-separator">:</div>
+                <div class="time-block">
+                    <span class="time-num" id="timer-minutes">--</span>
+                    <span class="time-unit">MINUTES</span>
+                </div>
+                <div class="time-separator">:</div>
+                <div class="time-block">
+                    <span class="time-num" id="timer-seconds">--</span>
+                    <span class="time-unit">SECONDS</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Threat Messages Card -->
+        <section class="card message-card">
+            <div class="card-header">
+                <span class="card-id">SYS.MSG_GEN</span>
+                <h2>精神的負荷シグナル</h2>
+            </div>
+            <div class="message-content">
+                <p id="threat-message" class="threat-text">システム初期化中...</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Script Block -->
+    <script>
+        // Target Date: 2026-08-19 09:00:00 JST (UTC+9)
+        // Set using Date.UTC to guarantee 100% cross-platform compatibility (iOS/Safari)
+        const targetDate = new Date(Date.UTC(2026, 7, 19, 0, 0, 0));
+
+        // Threat messages array
+        const threatMessages = [
+            "「まだ時間がある」と思ったあなた、過去問は何年分解きました？",
+            "サイトを更新しても残り時間は増えませんよ。",
+            "全落ちした後の言い訳、もう考え始めましたか？",
+            "ライバルは今、あなたがこのメッセージを読んでいる間にも新しい知識を蓄えています。",
+            "諦めて就活しますか？それともサボり続けて浪費しますか？",
+            "あなたの「明日から本気出す」は、何回裏切られましたか？",
+            "睡眠、スマホ、休憩。それらをすべて引いて、本当に合格できると信じていますか？",
+            "合格発表の日、自分の番号がない画面を見つめる心の準備はできていますか？",
+            "このタイマーが0になった瞬間、あなたの運命は決定されます。",
+            "SNSを見る時間があるのに、公式を覚える時間はないのですか？",
+            "「今日くらい休んでも大丈夫」——その妥協が不合格への第一歩です。",
+            "ライバルはすでにあなたの遥か先を走っています。"
+        ];
+
+        let currentMessageIndex = 0;
+
+        // DOM Elements
+        const dDays = document.getElementById('timer-days');
+        const dHours = document.getElementById('timer-hours');
+        const dMinutes = document.getElementById('timer-minutes');
+        const dSeconds = document.getElementById('timer-seconds');
+        const threatEl = document.getElementById('threat-message');
+
+        // Format numbers with padding
+        function pad(num) {
+            return num.toString().padStart(2, '0');
+        }
+
+        // Main Countdown Update Logic
+        function updateCountdown() {
+            const now = new Date();
+            const diffMs = targetDate.getTime() - now.getTime();
+
+            // 1. Exam period / post-exam check
+            if (diffMs <= 0) {
+                dDays.textContent = "00";
+                dHours.textContent = "00";
+                dMinutes.textContent = "00";
+                dSeconds.textContent = "00";
+                threatEl.textContent = "09:00 - 試験開始。積み重ねてきたもの（またはサボってきた成果）をそのまま答案に書いてきなさい。";
+                return;
+            }
+
+            // 2. Normal countdown math
+            const diffSeconds = Math.floor(diffMs / 1000);
+            const days = Math.floor(diffSeconds / (3600 * 24));
+            const hours = Math.floor((diffSeconds % (3600 * 24)) / 3600);
+            const minutes = Math.floor((diffSeconds % 3600) / 60);
+            const seconds = diffSeconds % 60;
+
+            dDays.textContent = pad(days);
+            dHours.textContent = pad(hours);
+            dMinutes.textContent = pad(minutes);
+            dSeconds.textContent = pad(seconds);
+
+            // 3. Special Warning Messages based on Time
+            const morningWindowMs = 3 * 60 * 60 * 1000; // 3 hours before (06:00 to 08:59 JST)
+            if (diffMs <= morningWindowMs) {
+                threatEl.textContent = "今さら焦っても過去のあなたのサボりは消えません。腹を括りなさい。";
+            }
+        }
+
+        // Rotate general threat messages every 7 seconds
+        function rotateMessage() {
+            const now = new Date();
+            const diffMs = targetDate.getTime() - now.getTime();
+            
+            const morningWindowMs = 3 * 60 * 60 * 1000;
+            if (diffMs <= morningWindowMs) {
+                return;
+            }
+
+            threatEl.style.opacity = '0';
+            setTimeout(() => {
+                currentMessageIndex = (currentMessageIndex + 1) % threatMessages.length;
+                threatEl.textContent = threatMessages[currentMessageIndex];
+                threatEl.style.opacity = '1';
+            }, 300);
+        }
+
+        // Visibility API handlers for tab title tracking
+        let defaultTitle = "【警告】現実直視カウントダウンシステム";
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                document.title = "[!] 逃げたな？戻れ";
+            } else {
+                document.title = "[WARNING] 戻ったか。早く勉強しろ。";
+                setTimeout(() => {
+                    if (!document.hidden) {
+                        document.title = defaultTitle;
+                    }
+                }, 3000);
+            }
+        });
+
+        // Initialize Page Content
+        updateCountdown();
+        threatEl.textContent = threatMessages[0];
+
+        // Intervals
+        setInterval(updateCountdown, 1000);
+        setInterval(rotateMessage, 7000);
+    </script>
+</body>
+</html>

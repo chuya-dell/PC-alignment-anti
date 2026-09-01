@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【警告】現実直視カウントダウンシステム</title>
+    <meta name="description" content="2026年8月19日 院試開始に向けた現実突きつけカウントダウン。ライバルは今も勉強しています。">
+    <!-- Google Fonts for Cyberpunk typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Noto+Sans+JP:wght@400;700;900&family=Rajdhani:wght@600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="cyber-theme">
+    <!-- CRT scanlines and flicker overlay for cyberpunk vibe -->
+    <div class="crt-overlay" aria-hidden="true"></div>
+    <div class="glitch-ambient" aria-hidden="true"></div>
+
+    <!-- Header Warning Bar -->
+    <header class="warning-ticker-bar" id="warning-header">
+        <div class="ticker-wrap">
+            <div class="ticker">
+                <span class="warning-tag">[CRITICAL WARNING]</span> あなたの志望校の合格枠は増えません。他人がサボることを期待するな。&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span class="warning-tag">[SYSTEM STATUS: DANGER]</span> 刻一刻とライバルとの差が開いています。&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span class="warning-tag">[CRITICAL WARNING]</span> あなたの志望校の合格枠は増えません。他人がサボることを期待するな。&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span class="warning-tag">[SYSTEM STATUS: DANGER]</span> 刻一刻とライバルとの差が開いています。&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            </div>
+        </div>
+    </header>
+
+    <!-- Main App Container -->
+    <main class="app-container">
+        <!-- System Title Block -->
+        <section class="system-title-section">
+            <div class="system-status-indicator">
+                <span class="blink-dot"></span>
+                <span class="status-text">MONITORING YOUR APATHY</span>
+            </div>
+            <h1 class="main-title">院試開始時刻 ターゲットカウントダウン</h1>
+            <p class="target-date-label">TARGET JST: <span class="highlight-yellow">2026.08.19 09:00:00</span></p>
+        </section>
+
+        <!-- Countdown Timer Card -->
+        <section class="card countdown-card">
+            <div class="card-header">
+                <span class="card-id">SYS.CD_0819</span>
+                <h2>残された時間</h2>
+            </div>
+            <div class="timer-display">
+                <div class="time-block">
+                    <span class="time-num" id="timer-days">--</span>
+                    <span class="time-unit">DAYS</span>
+                </div>
+                <div class="time-separator">:</div>
+                <div class="time-block">
+                    <span class="time-num" id="timer-hours">--</span>
+                    <span class="time-unit">HOURS</span>
+                </div>
+                <div class="time-separator">:</div>
+                <div class="time-block">
+                    <span class="time-num" id="timer-minutes">--</span>
+                    <span class="time-unit">MINUTES</span>
+                </div>
+                <div class="time-separator">:</div>
+                <div class="time-block">
+                    <span class="time-num" id="timer-seconds">--</span>
+                    <span class="time-unit">SECONDS</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Threat Messages Card -->
+        <section class="card message-card">
+            <div class="card-header">
+                <span class="card-id">SYS.MSG_GEN</span>
+                <h2>精神的負荷シグナル</h2>
+            </div>
+            <div class="message-content">
+                <p id="threat-message" class="threat-text">システム初期化中...</p>
+            </div>
+        </section>
+
+
+
+    <script src="app.js"></script>
+</body>
+</html>

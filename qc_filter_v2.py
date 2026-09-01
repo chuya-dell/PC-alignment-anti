@@ -72,20 +72,6 @@ def get_l3_mask(date_str, sample_id, pos_id, xi, yi, img_width=4096, img_height=
         
     masked_area = 0.0
     
-    # 0. Check for Auto Mask (.npy) first
-    auto_mask_path = rf"C:\Users\chuya\.gemini\antigravity\brain\60f5a68e-8281-4136-8936-9e4e95854572\auto_masks\{date_str}_{sample_id}-{pos_id}_mask.npy"
-    if os.path.exists(auto_mask_path):
-        auto_mask = np.load(auto_mask_path)
-        if scratch_mask is not None:
-            auto_mask[scratch_mask] = 0
-            
-        masked_area += np.sum(auto_mask)
-        in_mask = auto_mask[yi, xi] > 0
-        valid_mask &= (~in_mask)
-        
-        masked_ratio = min(1.0, masked_area / valid_overlap_area) if valid_overlap_area > 0 else 1.0
-        return valid_mask, masked_ratio
-    
     # 1. Check for ROI zip files first
     if roi_dir:
         roi_filename = f"{date_str}_{sample_id}_{pos_id}_ROI.zip"

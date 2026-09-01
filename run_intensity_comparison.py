@@ -9,7 +9,7 @@ from tqdm import tqdm
 # Ensure we can import modules from the current directory
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from run_batch_alignment import resolve_gdrive_path
+from path_resolver import resolve_gdrive_path
 
 def find_alignment_pairs(data_dir):
     """

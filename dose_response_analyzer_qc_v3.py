@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from qc_filter_v2 import get_sample_info, get_l3_mask
 from verification_tests_v3 import get_knife_mask, extract_pillars, extract_delta
 
-def analyze_and_plot_v3(assay_type, date_str, exp_dir, out_png, no_mask=False, roi_dir=None):
+def analyze_and_plot_v3(assay_type, date_str, exp_dir, out_png, roi_dir=None):
     exp_dir = os.path.abspath(exp_dir)
     pre_files = sorted(glob.glob(os.path.join(exp_dir, "**", "*-0.tif"), recursive=True))
     
@@ -59,11 +59,7 @@ def analyze_and_plot_v3(assay_type, date_str, exp_dir, out_png, no_mask=False, r
                 delta_raw_arr = pt_ints_raw[valid_p_raw] - p_ints_raw[valid_p_raw]
                 
         # Calculate QC Delta
-        if no_mask:
-            valid_l3 = np.ones_like(valid_raw, dtype=bool)
-            masked_ratio = 0.0
-        else:
-            valid_l3, masked_ratio = get_l3_mask(date_str, sample_id, pos_id, xi, yi, w, h, knife_mask, roi_dir)
+        valid_l3, masked_ratio = get_l3_mask(date_str, sample_id, pos_id, xi, yi, w, h, knife_mask, roi_dir)
         is_valid_l2 = masked_ratio <= 0.15
         
         valid_qc = valid_raw & valid_l3
@@ -95,11 +91,11 @@ def analyze_and_plot_v3(assay_type, date_str, exp_dir, out_png, no_mask=False, r
     
     for sub_id, group in df_blanks_raw.groupby('substrate_id'):
         all_raw = np.concatenate(group['delta_raw_arr'].values)
-        substrate_thresh_raw[sub_id] = np.mean(all_raw) - 3 * np.std(all_raw)
+        substrate_thresh_raw[sub_id] = np.mean(all_raw) + 3 * np.std(all_raw)
         
     for sub_id, group in df_blanks_qc.groupby('substrate_id'):
         all_qc = np.concatenate(group['delta_qc_arr'].values)
-        substrate_thresh_qc[sub_id] = np.mean(all_qc) - 3 * np.std(all_qc)
+        substrate_thresh_qc[sub_id] = np.mean(all_qc) + 3 * np.std(all_qc)
         
     # Global fallback just in case
     global_raw_thresh = np.mean(list(substrate_thresh_raw.values())) if substrate_thresh_raw else 0
@@ -117,7 +113,7 @@ def analyze_and_plot_v3(assay_type, date_str, exp_dir, out_png, no_mask=False, r
         # Raw %
         if row['delta_raw_arr'] is not None:
             arr = row['delta_raw_arr']
-            grid_pct = np.sum(arr < raw_t) / len(arr) * 100.0
+            grid_pct = np.sum(arr > raw_t) / len(arr) * 100.0
             results_raw.append({
                 'true_conc': row['true_conc'], 'run_id': row['run_id'], 'sample_id': row['sample_id'],
                 'grid_pct': grid_pct
@@ -126,56 +122,22 @@ def analyze_and_plot_v3(assay_type, date_str, exp_dir, out_png, no_mask=False, r
         # QC %
         if row['delta_qc_arr'] is not None and row['is_valid_l1'] and row['is_valid_l2']:
             arr = row['delta_qc_arr']
-            grid_pct = np.sum(arr < qc_t) / len(arr) * 100.0
+            grid_pct = np.sum(arr > qc_t) / len(arr) * 100.0
             results_qc.append({
                 'true_conc': row['true_conc'], 'run_id': row['run_id'], 'sample_id': row['sample_id'],
-                'grid_pct': grid_pct,
-                'mean_delta': np.mean(arr) if len(arr) > 0 else 0,
-                'arr': arr
+                'grid_pct': grid_pct
             })
             
     df_res_raw = pd.DataFrame(results_raw)
     df_res_qc = pd.DataFrame(results_qc)
     
-    # 4. Export to Excel (Raw Pillar Deltas for Prism)
-    excel_out = out_png.replace('.png', '.xlsx')
-    
-    with pd.ExcelWriter(excel_out) as writer:
-        concs = sorted(df['true_conc'].unique(), reverse=True)
-        if 0 in concs:
-            concs.remove(0)
-            concs.append(0)
-            
-        for c in concs:
-            sheet_name = f"{c:g} M" if c > 0 else "Blank"
-            # Get all valid qc arrays for this concentration
-            group = df[(df['true_conc'] == c) & (df['is_valid_l1'] == True) & (df['is_valid_l2'] == True)]
-            
-            col_data = {}
-            max_len = 0
-            for _, row in group.iterrows():
-                arr = row['delta_qc_arr']
-                if arr is not None:
-                    col_name = f"Sub{row['substrate_id']}_S{row['sample_id']}_P{row['pos_id']}"
-                    col_data[col_name] = arr
-                    max_len = max(max_len, len(arr))
-                    
-            if col_data:
-                # Pad with NaNs so we can make a DataFrame
-                for k in col_data:
-                    arr = col_data[k]
-                    if len(arr) < max_len:
-                        col_data[k] = np.pad(arr, (0, max_len - len(arr)), constant_values=np.nan)
-                        
-                df_sheet = pd.DataFrame(col_data)
-                df_sheet.to_excel(writer, sheet_name=sheet_name, index=False)
-                
     def aggregate_and_plot(df_res, title_suffix, color_main, color_blank, out_suffix):
         if len(df_res) == 0: return
         df_agg = df_res.groupby(['true_conc', 'run_id', 'sample_id']).agg(
             mean_grid=('grid_pct', 'mean'),
             std_grid=('grid_pct', 'std')
         ).reset_index()
+        
         plt.figure(figsize=(10, 7))
         df_inc = df_agg[df_agg['true_conc'] > 0]
         if len(df_inc) > 0:
@@ -206,76 +168,17 @@ def analyze_and_plot_v3(assay_type, date_str, exp_dir, out_png, no_mask=False, r
         plt.savefig(out_png.replace('.png', out_suffix), dpi=300, bbox_inches='tight')
         plt.close()
         
-    out_raw = out_png.replace('.png', '_raw_grid.png')
-    out_qc = out_png.replace('.png', '_qc_grid.png')
     aggregate_and_plot(df_res_raw, "WITHOUT EXCLUSION (Raw - Grid %)", 'gray', 'lightgray', '_raw_grid.png')
     aggregate_and_plot(df_res_qc, "WITH EXCLUSION (L1/L2/L3 QC - Grid %)", 'blue', 'orange', '_qc_grid.png')
-    print(f"Saved plots to {out_raw} and {out_qc}")
-    
-    # Generate automatic summary CSV with advanced flags and skewness
-    if len(results_qc) > 0:
-        import scipy.stats as stats
-        df_qc = pd.DataFrame(results_qc)
-        df_blank = df_qc[df_qc['true_conc'] == 0]
-        if len(df_blank) > 0:
-            blank_mean = df_blank['mean_delta'].mean()
-            blank_std = df_blank['mean_delta'].std() if len(df_blank) > 1 else 0
-        else:
-            blank_mean, blank_std = 0, 0
-            
-        summary_rows = []
-        for conc, group in df_qc.groupby('true_conc'):
-            n_fovs = len(group)
-            total_pillars = sum(len(x) for x in group['arr'])
-            cond_mean = group['mean_delta'].mean()
-            cond_grid = group['grid_pct'].mean()
-            z_score = (cond_mean - blank_mean) / blank_std if blank_std > 0 else np.nan
-            
-            # Skewness calculation (using all pillars in condition)
-            all_pillars = np.concatenate(group['arr'].values) if len(group) > 0 else np.array([])
-            skewness = stats.skew(all_pillars) if len(all_pillars) > 2 else np.nan
-            
-            # Flags calculation
-            flags = []
-            if n_fovs == 1:
-                flags.append("n=1")
-            if total_pillars < 50:
-                flags.append(f"LowPillarCount({total_pillars})")
-            if blank_std < 0.05 or blank_std > 0.20:
-                flags.append("AbnormalBlankStd")
-                
-            # Check for extreme single-FOV contamination
-            if n_fovs > 1:
-                grids = group['grid_pct'].values
-                if np.max(grids) > 20 and np.max(grids) > 5 * np.median(grids) and np.median(grids) < 10:
-                    flags.append("SingleFOVOutlier")
-                    
-            summary_rows.append({
-                'Concentration (M)': conc,
-                'FOV Count (n)': n_fovs,
-                'Valid Pillars': total_pillars,
-                'Mean Delta (%)': cond_mean,
-                'Neg Grid (%)': cond_grid,
-                'Z-Score (vs Blank)': z_score,
-                'Skewness': skewness,
-                'Blank Mean (%)': blank_mean,
-                'Blank Std (%)': blank_std,
-                'Flags': " | ".join(flags)
-            })
-            
-        df_summary = pd.DataFrame(summary_rows).sort_values('Concentration (M)', ascending=False)
-        out_csv = args.out.replace('.png', '_summary.csv')
-        df_summary.to_csv(out_csv, index=False)
-        print(f"Saved auto-summary report to {out_csv}")
+    print(f"Saved plots to {out_png.replace('.png', '_raw_grid.png')} and _qc_grid.png")
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="QC Dose Response Analyzer V3")
-    parser.add_argument("--assay", type=str, required=True, help="SAM or DNA")
-    parser.add_argument("--date", type=str, required=True, help="Experiment date (e.g., 260828)")
-    parser.add_argument("--dir", type=str, required=True, help="Directory containing the npy masks")
-    parser.add_argument("--out", type=str, required=True, help="Output PNG path")
-    parser.add_argument("--no-mask", action="store_true", help="Disable L3 masking")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--assay", type=str, required=True)
+    parser.add_argument("--date", type=str, required=True)
+    parser.add_argument("--dir", type=str, required=True)
+    parser.add_argument("--out", type=str, required=True)
     parser.add_argument("--roi", type=str, default=None)
     args = parser.parse_args()
-    analyze_and_plot_v3(args.assay, args.date, args.dir, args.out, args.no_mask)
+    analyze_and_plot_v3(args.assay, args.date, args.dir, args.out, args.roi)
